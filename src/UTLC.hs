@@ -15,8 +15,12 @@ reduceList :: Term -> IO ()
 reduceList t = mapM_ print (reduceIter reduceCBV 200 t)
 
 reduceListStepper :: Term -> IO ()
-reduceListStepper t = mapM_ (print >=> const getLine)
-  (reduceIterInfi reduceCBN t)
+reduceListStepper t = mapM (print >=> const getLine >=> const (return 1))
+  (reduceIterInfi reduceCBN t) >>= (print . sum)
+
+reduceListInfiAuto :: Term -> IO ()
+reduceListInfiAuto t = mapM (print >=> const (putStrLn "") >=> const (return 1))
+  (reduceIterInfi reduceCBN t) >>= (print . sum)
 
 data Term
   = App !Term !Term
