@@ -21,7 +21,7 @@ library
     exposed-modules:  MyLib UTLC LMM
     -- other-modules:
     -- other-extensions:
-    build-depends:    base ^>=4.21.0.0
+    build-depends:    base
     hs-source-dirs:   src
     default-language: Haskell2010
 
@@ -31,7 +31,7 @@ executable hs-dual
     -- other-modules:
     -- other-extensions:
     build-depends:
-        base ^>=4.21.0.0,
+        base,
         hs-dual
 
     hs-source-dirs:   app
@@ -46,5 +46,5 @@ test-suite hs-dual-test
     hs-source-dirs:   test
     main-is:          Main.hs
     build-depends:
-        base ^>=4.21.0.0,
+        base,
         hs-dual
