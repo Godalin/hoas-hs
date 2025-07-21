@@ -114,6 +114,13 @@ reduceIterInfi reducef t = t : go t where
     Step t' -> t' : go t'
     _ -> []
 
+reduceIterInfiSteps :: (Term -> ReduceResult) -> Term -> (Term, Int)
+reduceIterInfiSteps reducef t = go t 1 where
+  go t steps = case reducef t of
+    Step t' -> go t' (steps + 1)
+    _ -> (t, steps)
+
+
 
 -- first-order representations
 data FOTerm
