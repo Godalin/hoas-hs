@@ -3,6 +3,7 @@
 
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unused-matches #-}
+{-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module UTLC where
