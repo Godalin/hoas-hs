@@ -230,4 +230,4 @@ y :: Term
 y = Lam $ \f -> (Lam $ \x -> f @ (x @ x)) @ (Lam $ \x -> f @ (x @ x))
 
 mu :: Term
-mu = Lam $ \t -> (y @ (Lam $ \n -> Lam $ \f -> ifz @ (t @ n) @ (f @ (suc @ n)))) @ zro
+mu = Lam $ \t -> (y @ (Lam $ \f -> Lam $ \n -> ifz @ (t @ n) @ n @ (f @ (suc @ n)))) @ zro
