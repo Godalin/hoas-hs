@@ -21,3 +21,5 @@ Reduction Strategies:
 From this paper:
 
 [Grokking the Sequent Calculus (Functional Pearl)](https://dl.acm.org/doi/10.1145/3674639)
+
+## More Calculi to Come
