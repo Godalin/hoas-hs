@@ -1,29 +1,36 @@
--- Everything you want about untyped lambda calculus
--- is in this file
-
-{-# OPTIONS_GHC -Wno-name-shadowing #-}
-{-# OPTIONS_GHC -Wno-unused-matches #-}
-{-# OPTIONS_GHC -Wno-type-defaults #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+{-# OPTIONS_GHC -Wno-name-shadowing #-}
+{-# OPTIONS_GHC -Wno-type-defaults #-}
+{-# OPTIONS_GHC -Wno-unused-matches #-}
+
+{-
+  Everything you want about untyped lambda calculus
+  is in this file
+-}
 
 module UTLCext where
 
+import Control.Monad
 import Data.String
 import Text.Printf
-import Control.Monad
 
 reduceList :: Term -> IO ()
 reduceList t = mapM_ print (reduceIter reduceCBN 200 t)
 
 reduceListStepper :: Term -> IO ()
-reduceListStepper t = mapM (print >=> const getLine >=> const (return 1))
-  (reduceIterInfi reduceCBN t) >>= (print . sum)
+reduceListStepper t =
+  mapM
+    (print >=> const getLine >=> const (return 1))
+    (reduceIterInfi reduceCBN t)
+    >>= (print . sum)
 
 reduceListInfiAuto :: Term -> IO ()
-reduceListInfiAuto t = mapM (print >=> const (putStrLn "") >=> const (return 1))
-  (reduceIterInfi reduceCBN t) >>= (print . sum)
-
-
+reduceListInfiAuto t =
+  mapM
+    (print >=> const (putStrLn "") >=> const (return 1))
+    (reduceIterInfi reduceCBN t)
+    >>= (print . sum)
 
 -- now we have a lot of bindings (of the same type)
 
@@ -38,13 +45,9 @@ data Term
 (@) :: Term -> Term -> Term
 (@) = App
 
-
-
 instance Show Term where
   -- show = show . toFO
   show = prettyTerm 0
-
-
 
 -- Simple Pretty Printer
 
@@ -55,8 +58,6 @@ prettyTerm d (App t1 t2) = printf "(%s %s)" (prettyTerm d t1) (prettyTerm d t2)
 prettyTerm d (Lam f) = printf "λx%d.%s" d (prettyTerm (d + 1) (f (Var d)))
 prettyTerm d (Let t f) = printf "let x%d=%s in %s" (prettyTerm d t) (prettyTerm (d + 1) (f (Var d)))
 prettyTerm d (Fix f) = printf "μx%d.%s" d (prettyTerm (d + 1) (f (Var d)))
-
-
 
 -- Reduction strategies
 
@@ -89,7 +90,6 @@ reduceCBV (App t1 t2) =
     Error err -> Error err
 reduceCBV _ = Error "invalid term"
 
-
 -- call by name, but let bindings are early reduced
 reduceCBN :: Term -> ReduceResult
 reduceCBN (Lam f) = Stop (Lam f)
@@ -113,33 +113,32 @@ reduceCBN (Let t f) =
 reduceCBN (Fix f) = Step (f (Fix f)) -- fixed-point combinator should be expanded
 reduceCBN _ = Error "invalid term"
 
-
-
 -- reduce iterator
 reduceIter :: (Term -> ReduceResult) -> Int -> Term -> [Term]
-reduceIter reducef d t = t : go d t where
-  go 0 _ = []
-  go d t = case reducef t of
-    Step t' -> t' : go (d - 1) t'
-    _ -> []
+reduceIter reducef d t = t : go d t
+  where
+    go 0 _ = []
+    go d t = case reducef t of
+      Step t' -> t' : go (d - 1) t'
+      _ -> []
 
 reduceIterInfi :: (Term -> ReduceResult) -> Term -> [Term]
-reduceIterInfi reducef t = t : go t where
-  go t = case reducef t of
-    Step t' -> t' : go t'
-    _ -> []
+reduceIterInfi reducef t = t : go t
+  where
+    go t = case reducef t of
+      Step t' -> t' : go t'
+      _ -> []
 
 reduceIterInfiSteps :: (Term -> ReduceResult) -> Term -> (Term, Int)
-reduceIterInfiSteps reducef t = go t 1 where
-  go t steps = case reducef t of
-    Step t' -> go t' (steps + 1)
-    _ -> (t, steps)
-
-
+reduceIterInfiSteps reducef t = go t 1
+  where
+    go t steps = case reducef t of
+      Step t' -> go t' (steps + 1)
+      _ -> (t, steps)
 
 -- first-order representations
 data FOTerm
-  =  FVar Int
+  = FVar Int
   | FName String
   | FApp FOTerm FOTerm
   | FLam FOTerm
@@ -164,8 +163,6 @@ depth (App t1 t2) = max (depth t1) (depth t2)
 depth (Lam f) = 1 + depth (f (Var (-1)))
 depth (Name _) = 0
 
-
-
 instance Num Term where
   (+) = \x -> \y -> add @ x @ y
   (*) = \x -> \y -> mul @ x @ y
@@ -175,12 +172,9 @@ instance Num Term where
   signum = error "Signum not defined in UTLC"
   fromInteger n = nat (fromIntegral n)
 
-
-
 -- allow string literals to be used as Name terms
 instance IsString Term where
   fromString = Name
-
 
 -- example terms
 
@@ -223,7 +217,7 @@ snd_ :: Term
 snd_ = Lam $ \p -> p @ (Lam $ \x -> Lam $ \y -> y)
 
 prd :: Term
-prd = Lam $ \n -> snd_ @ (n @ (Lam $ \p -> pair @ (suc @ (fst_ @ p)) @ (fst_ @ p) ) @ (pair @ zro @ zro))
+prd = Lam $ \n -> snd_ @ (n @ (Lam $ \p -> pair @ (suc @ (fst_ @ p)) @ (fst_ @ p)) @ (pair @ zro @ zro))
 
 add :: Term
 add = Lam $ \m -> Lam $ \n -> Lam $ \f -> Lam $ \z -> m @ f @ (n @ f @ z)
