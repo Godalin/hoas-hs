@@ -11,24 +11,23 @@ import Control.Monad
 import Control.Monad.Except
 import Text.Printf
 
-reduceList :: Statement -> IO ()
-reduceList = mapM_ print . reduceIter
-
-reduceListInteractive :: Statement -> IO ()
-reduceListInteractive = mapM_ (print >=> const (void getLine)) . reduceIter
-
 data Producer
   = Pmu (Consumer -> Statement)
   | Pnum Int
 
 data Consumer
-  = Cstar
-  | Cvar Int
+  = -- | the global consumer
+    Cstar
+  | -- | helper constructor for printing
+    Cvar Int
 
 data Statement
-  = Spair Producer Consumer
-  | Sop (Int -> Int -> Int) Producer Producer Consumer
-  | Sifz Producer Statement Statement
+  = -- | pair of Producer and Consumer
+    Spair Producer Consumer
+  | -- | do real computation
+    Sop (Int -> Int -> Int) Producer Producer Consumer
+  | -- | judgement for zero
+    Sifz Producer Statement Statement
 
 prettyP :: Int -> Producer -> String
 prettyP d (Pmu f) = "μ(" ++ prettyC (Cvar d) ++ ")." ++ prettyS (d + 1) (f (Cvar d))
@@ -68,12 +67,19 @@ reduceIter s = (s :) <$> go s
   where
     go s = (reduceStatement s >>= (\s' -> (s' :) <$> go s')) `catchError` const (return [])
 
-reduceIterPrinter :: Statement -> IO ()
-reduceIterPrinter s = do
+reduceIterList :: Statement -> IO ()
+reduceIterList s = do
   let ss = runExcept (reduceIter s)
   case ss of
     Left err -> putStrLn $ "Error: " ++ err
     Right statements -> mapM_ print statements
+
+reduceIterInteractive :: Statement -> IO ()
+reduceIterInteractive s = do
+  let ss = runExcept (reduceIter s)
+  case ss of
+    Left err -> putStrLn $ "Error: " ++ err
+    Right statements -> mapM_ (print >=> const (void getLine)) statements
 
 -- Example Constructs
 
