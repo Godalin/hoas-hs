@@ -3,15 +3,19 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
+{- ICFP 2024 -}
+
 module LMM where
 
+import Control.Monad
 import Control.Monad.Except
-import Control.Monad.IO.Class
-import Control.Monad.Trans
 import Text.Printf
 
 reduceList :: Statement -> IO ()
-reduceList s = mapM_ print (reduceIter s)
+reduceList = mapM_ print . reduceIter
+
+reduceListInteractive :: Statement -> IO ()
+reduceListInteractive = mapM_ (print >=> const (void getLine)) . reduceIter
 
 data Producer
   = Pmu (Consumer -> Statement)
@@ -26,31 +30,31 @@ data Statement
   | Sop (Int -> Int -> Int) Producer Producer Consumer
   | Sifz Producer Statement Statement
 
-prettyProducer :: Int -> Producer -> String
-prettyProducer d (Pmu f) = "μ(" ++ prettyConsumer (Cvar d) ++ ")." ++ prettyStatement (d + 1) (f (Cvar d))
-prettyProducer _ (Pnum n) = show n
+prettyP :: Int -> Producer -> String
+prettyP d (Pmu f) = "μ(" ++ prettyC (Cvar d) ++ ")." ++ prettyS (d + 1) (f (Cvar d))
+prettyP _ (Pnum n) = show n
 
-prettyConsumer :: Consumer -> String
-prettyConsumer Cstar = "*"
-prettyConsumer (Cvar n) = "a" ++ show n
+prettyC :: Consumer -> String
+prettyC Cstar = "*"
+prettyC (Cvar n) = "a" ++ show n
 
-prettyStatement :: Int -> Statement -> String
-prettyStatement d (Spair p c) = printf "<%s|%s>" (prettyProducer d p) (prettyConsumer c)
-prettyStatement d (Sop op p1 p2 c) = case op 1 1 of
-  2 -> printf "op+(%s,%s;%s)" (prettyProducer d p1) (prettyProducer d p2) (prettyConsumer c)
-  0 -> printf "op-(%s,%s;%s)" (prettyProducer d p1) (prettyProducer d p2) (prettyConsumer c)
-  1 -> printf "op*(%s,%s;%s)" (prettyProducer d p1) (prettyProducer d p2) (prettyConsumer c)
-  _ -> printf "op?(%s,%s;%s)" (prettyProducer d p1) (prettyProducer d p2) (prettyConsumer c)
-prettyStatement d (Sifz p s1 s2) = printf "ifz(%s;%s;%s)" (prettyProducer d p) (prettyStatement (d + 1) s1) (prettyStatement (d + 1) s2)
+prettyS :: Int -> Statement -> String
+prettyS d (Spair p c) = printf "<%s|%s>" (prettyP d p) (prettyC c)
+prettyS d (Sop op p1 p2 c) = case op 1 1 of
+  2 -> printf "op+(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC c)
+  0 -> printf "op-(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC c)
+  1 -> printf "op*(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC c)
+  _ -> printf "op?(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC c)
+prettyS d (Sifz p s1 s2) = printf "ifz(%s;%s;%s)" (prettyP d p) (prettyS (d + 1) s1) (prettyS (d + 1) s2)
 
 instance Show Producer where
-  show = prettyProducer 0
+  show = prettyP 0
 
 instance Show Consumer where
-  show = prettyConsumer
+  show = prettyC
 
 instance Show Statement where
-  show = prettyStatement 0
+  show = prettyS 0
 
 reduceStatement :: Statement -> Except String Statement
 reduceStatement (Sop op (Pnum n1) (Pnum n2) c) = return (Spair (Pnum (op n1 n2)) c)
