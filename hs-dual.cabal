@@ -18,7 +18,7 @@ common warnings
 
 library
     import:           warnings
-    exposed-modules:  MyLib UTLC UTLCext LMM
+    exposed-modules:  MyLib UTLC UTLCext LMM PHOAS
     -- other-modules:
     -- other-extensions:
     build-depends:    base, containers, transformers, mtl, megaparsec, haskeline
