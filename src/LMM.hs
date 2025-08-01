@@ -1,15 +1,15 @@
 {-# HLINT ignore "Avoid lambda" #-}
-{-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE BlockArguments    #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 module LMM where
 
-import Control.Monad
-import Control.Monad.Except
-import Data.String
-import Text.Printf
+import           Control.Monad
+import           Control.Monad.Except
+import           Data.String
+import           Text.Printf
 
 -- | * LMM - Lambda Mu Mu~
 -- Higher and lower representation
@@ -103,7 +103,7 @@ reduceStatement _ (Spair _ (Cvar _)) = throwError "Bad consumer Cvar"
 reduceStatement _ (Spair _ Cstar) = throwError "Reduction stops with <*>"
 reduceStatement prog (Scall name n@(Pnum _) c) =
   case lookup name prog of
-    Just f -> return (f n c)
+    Just f  -> return (f n c)
     Nothing -> throwError $ printf "Function %s not defined" name
 reduceStatement _prog (Scall _name _ _) = throwError $ printf "Only call with values"
 
@@ -118,7 +118,7 @@ reduceIterList :: Statement -> IO ()
 reduceIterList s = do
   let ss = runExcept (reduceIter s)
   case ss of
-    Left err -> putStrLn $ "Error: " ++ err
+    Left err         -> putStrLn $ "Error: " ++ err
     Right statements -> mapM_ (putStrLn . ("--> " ++) . show) statements
 
 -- | reduce a statement interactively, waiting for user input after each reduction
@@ -126,7 +126,7 @@ reduceIterInteractive :: Statement -> IO ()
 reduceIterInteractive s = do
   let ss = runExcept (reduceIter s)
   case ss of
-    Left err -> putStrLn $ "Error: " ++ err
+    Left err         -> putStrLn $ "Error: " ++ err
     Right statements -> mapM_ ((putStrLn . ("--> " ++) . show) >=> const (void getLine)) statements
 
 -- |
@@ -175,14 +175,20 @@ egf2 = flet (2 * 2) (\x -> x * x)
 defined :: Program
 defined =
   [ ( "fct",
-      \x a -> Sifz x (Spair 1 a) (sminus x (Pnum 1) (Cmu \y -> Scall "fct" y (Cmu \z -> smul x z a)))
+      \x a -> Sifz x (Spair 1 a) (sminus x 1 (Cmu \y -> Scall "fct" y (Cmu \z -> smul x z a)))
+    ),
+    ( "fib",
+      \x a -> Sifz x (Spair 1 a) (sminus x 1 (Cmu \y -> Sifz y (Spair 1 a)
+        (sminus x 1 (Cmu \z -> Scall "fib" z (Cmu \w ->
+          sminus x 2 (Cmu \z1 -> Scall "fib" z1 (Cmu \w1 ->
+            splus w w1 a)))))))
     )
   ]
 
 instance IsString Producer where
   fromString s = case reads s of
     [(n, "")] -> Pnum n
-    _ -> error $ "Cannot parse Producer from string: " ++ s
+    _         -> error $ "Cannot parse Producer from string: " ++ s
 
 -- |
 -- ** low level macros
@@ -212,15 +218,7 @@ eg2 = stop $ Pmu (\a -> Sifz (Pnum 2) (Spair (Pnum 5) a) (Spair (Pnum 10) a))
 
 -- translate from (⌜2⌝ ∗ ⌜4⌝) + ⌜5⌝
 eg3 :: Statement
-eg3 =
-  stop $
-    Pmu
-      ( \a ->
-          splus
-            (Pmu (\b -> smul (Pnum 2) (Pnum 4) b))
-            (Pnum 5)
-            a
-      )
+eg3 = stop $ Pmu (\a -> splus (Pmu (\b -> smul (Pnum 2) (Pnum 4) b)) (Pnum 5) a)
 
 eg4 :: Statement
 eg4 = stop (Pmu (\a -> splus (Pnum 1) (Pnum 2) a))
