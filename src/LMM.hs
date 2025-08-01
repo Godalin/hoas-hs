@@ -3,8 +3,6 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-{- ICFP 2024 -}
-
 module LMM where
 
 import Control.Monad
@@ -12,13 +10,19 @@ import Control.Monad.Except
 import Text.Printf
 
 data Producer
-  = Pmu (Consumer -> Statement)
-  | Pnum Int
+  = -- | The "μ" operator
+    Pmu (Consumer -> Statement)
+  | -- | number constant
+    Pnum Int
+  | -- | <helper> constructor for printing
+    Pvar Int
 
 data Consumer
-  = -- | the global consumer
+  = -- | The "mu tilde" operator
+    Cmu (Producer -> Statement)
+  | -- | the global consumer
     Cstar
-  | -- | helper constructor for printing
+  | -- | <helper> constructor for printing
     Cvar Int
 
 data Statement
@@ -30,75 +34,137 @@ data Statement
     Sifz Producer Statement Statement
 
 prettyP :: Int -> Producer -> String
-prettyP d (Pmu f) = "μ(" ++ prettyC (Cvar d) ++ ")." ++ prettyS (d + 1) (f (Cvar d))
-prettyP _ (Pnum n) = show n
+prettyP d (Pmu f) = printf "μ(%s).%s" (prettyC d (Cvar d)) (prettyS (d + 1) (f (Cvar d)))
+prettyP _ (Pnum n) = printf "[%d]" n
+prettyP _ (Pvar n) = printf "x%d" n
 
-prettyC :: Consumer -> String
-prettyC Cstar = "*"
-prettyC (Cvar n) = "a" ++ show n
+prettyC :: Int -> Consumer -> String
+prettyC d (Cmu f) = printf "μ~(%s).%s" (prettyP d (Pvar d)) (prettyS (d + 1) (f (Pvar d)))
+prettyC _ Cstar = "{*}"
+prettyC _ (Cvar n) = printf "a%d" n
 
 prettyS :: Int -> Statement -> String
-prettyS d (Spair p c) = printf "<%s|%s>" (prettyP d p) (prettyC c)
+prettyS d (Spair p c) = printf "<%s|%s>" (prettyP d p) (prettyC d c)
 prettyS d (Sop op p1 p2 c) = case op 1 1 of
-  2 -> printf "op+(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC c)
-  0 -> printf "op-(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC c)
-  1 -> printf "op*(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC c)
-  _ -> printf "op?(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC c)
-prettyS d (Sifz p s1 s2) = printf "ifz(%s;%s;%s)" (prettyP d p) (prettyS (d + 1) s1) (prettyS (d + 1) s2)
+  2 -> printf "op+(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
+  0 -> printf "op-(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
+  1 -> printf "op*(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
+  _ -> printf "op?(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
+prettyS d (Sifz p s1 s2) = printf "ifz(%s;%s,%s)" (prettyP d p) (prettyS (d + 1) s1) (prettyS (d + 1) s2)
 
 instance Show Producer where
   show = prettyP 0
 
 instance Show Consumer where
-  show = prettyC
+  show = prettyC 0
 
 instance Show Statement where
   show = prettyS 0
 
+-- |
+-- ** Reduction
+
+-- | reduce a statement
 reduceStatement :: Statement -> Except String Statement
 reduceStatement (Sop op (Pnum n1) (Pnum n2) c) = return (Spair (Pnum (op n1 n2)) c)
+reduceStatement (Sop {}) = throwError "Cannot reduce statement with non-numeric producers"
 reduceStatement (Sifz (Pnum 0) s1 _) = return s1
 reduceStatement (Sifz (Pnum _) _ s2) = return s2
+reduceStatement (Sifz {}) = throwError "Cannot reduce statement with non-numeric producer in ifz"
 reduceStatement (Spair (Pmu f) c) = return (f c)
-reduceStatement _ = throwError "Cannot reduce statement"
+reduceStatement (Spair n@(Pnum _) (Cmu f)) = return (f n)
+reduceStatement (Spair (Pvar _) _) = throwError "Bad producer Pvar"
+reduceStatement (Spair _ (Cvar _)) = throwError "Bad consumer Cvar"
+reduceStatement (Spair _ Cstar) = throwError "Reduction stops with <*>"
 
+-- | reduce a statement iteratively until no more reductions are possible
 reduceIter :: Statement -> Except String [Statement]
 reduceIter s = (s :) <$> go s
   where
     go s = (reduceStatement s >>= (\s' -> (s' :) <$> go s')) `catchError` const (return [])
 
+-- | reduce a statement and print the list
 reduceIterList :: Statement -> IO ()
 reduceIterList s = do
   let ss = runExcept (reduceIter s)
   case ss of
     Left err -> putStrLn $ "Error: " ++ err
-    Right statements -> mapM_ print statements
+    Right statements -> mapM_ (putStrLn . ("--> " ++) . show) statements
 
+-- | reduce a statement interactively, waiting for user input after each reduction
 reduceIterInteractive :: Statement -> IO ()
 reduceIterInteractive s = do
   let ss = runExcept (reduceIter s)
   case ss of
     Left err -> putStrLn $ "Error: " ++ err
-    Right statements -> mapM_ (print >=> const (void getLine)) statements
+    Right statements -> mapM_ ((putStrLn . ("--> " ++) . show) >=> const (void getLine)) statements
 
--- Example Constructs
+-- |
+-- ** Example Constructs
+-- Use higher order syntax to define higher order language `Fun`
 
+-- | if operator
+fifz :: Producer -> Producer -> Producer -> Producer
+fifz test then' else' = Pmu (\a -> Sifz test (Spair then' a) (Spair else' a))
+
+fop :: (Int -> Int -> Int) -> Producer -> Producer -> Producer
+fop op p1 p2 = Pmu (\a -> Sop op p1 p2 a)
+
+flet :: Producer -> (Producer -> Producer) -> Producer
+flet bind body = Pmu (\a -> Spair bind (Cmu (\x -> Spair (body x) a)))
+
+-- |
+-- ** Reduce `Fun`
+type Fun = Producer
+
+-- | auto reduce
+reduceFunList :: Producer -> IO ()
+reduceFunList = reduceIterList . stop
+
+-- | interactive reduce
+reduceFunInteractive :: Producer -> IO ()
+reduceFunInteractive = reduceIterInteractive . stop
+
+instance Num Producer where
+  (+) = fop (+)
+  (-) = fop (-)
+  (*) = fop (*)
+  negate n = Pnum 0 - n
+  abs = error "Not Supported: abs"
+  signum = error "Not Supported: signum"
+  fromInteger n = Pnum (fromInteger n)
+
+-- |
+-- ** `Fun` Examples
+egf1 :: Fun
+egf1 = flet 5 (\x -> 2 + x)
+
+egf2 :: Fun
+egf2 = flet (2 * 2) (\x -> x * x)
+
+-- |
+-- ** low level macros
+
+-- | plus
 splus :: Producer -> Producer -> Consumer -> Statement
 splus = Sop (+)
 
+-- | minus
 sminus :: Producer -> Producer -> Consumer -> Statement
 sminus = Sop (-)
 
+-- | multiply
 smul :: Producer -> Producer -> Consumer -> Statement
 smul = Sop (*)
 
+-- | top level
 stop :: Producer -> Statement
 stop p = Spair p Cstar
 
 eg1 :: Statement
 eg1 = stop $ Pmu (\a -> splus (Pnum 1) (Pnum 2) a)
 
--- ⟨μα .ifz(⌜2⌝, ⟨⌜5⌝ | α⟩, ⟨⌜10⌝ | α⟩) | ⋆⟩
+-- ⟨μα.ifz(⌜2⌝, ⟨⌜5⌝ | α⟩, ⟨⌜10⌝ | α⟩) | ⋆⟩
 eg2 :: Statement
 eg2 = stop $ Pmu (\a -> Sifz (Pnum 2) (Spair (Pnum 5) a) (Spair (Pnum 10) a))
 
@@ -113,3 +179,6 @@ eg3 =
             (Pnum 5)
             a
       )
+
+eg4 :: Statement
+eg4 = stop (Pmu (\a -> splus (Pnum 1) (Pnum 2) a))
