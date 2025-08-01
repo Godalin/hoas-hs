@@ -1,5 +1,6 @@
 {-# HLINT ignore "Avoid lambda" #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
@@ -7,8 +8,16 @@ module LMM where
 
 import Control.Monad
 import Control.Monad.Except
+import Data.String
 import Text.Printf
 
+-- | * LMM - Lambda Mu Mu~
+-- Higher and lower representation
+
+-- | ** `Core` language
+-- Producers, Consumers and Statements
+
+-- | producer
 data Producer
   = -- | The "μ" operator
     Pmu (Consumer -> Statement)
@@ -17,6 +26,7 @@ data Producer
   | -- | <helper> constructor for printing
     Pvar Int
 
+-- | consumer
 data Consumer
   = -- | The "mu tilde" operator
     Cmu (Producer -> Statement)
@@ -25,6 +35,7 @@ data Consumer
   | -- | <helper> constructor for printing
     Cvar Int
 
+-- | statement
 data Statement
   = -- | pair of Producer and Consumer
     Spair Producer Consumer
@@ -32,6 +43,19 @@ data Statement
     Sop (Int -> Int -> Int) Producer Producer Consumer
   | -- | judgement for zero
     Sifz Producer Statement Statement
+  | -- | function calls
+    Scall Name Producer Consumer
+
+-- | ** top level definitions
+
+-- | definitions
+type Definition = (Name, Producer -> Consumer -> Statement)
+
+-- | names
+type Name = String
+
+-- | programs
+type Program = [Definition]
 
 prettyP :: Int -> Producer -> String
 prettyP d (Pmu f) = printf "μ(%s).%s" (prettyC d (Cvar d)) (prettyS (d + 1) (f (Cvar d)))
@@ -51,6 +75,7 @@ prettyS d (Sop op p1 p2 c) = case op 1 1 of
   1 -> printf "op*(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
   _ -> printf "op?(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
 prettyS d (Sifz p s1 s2) = printf "ifz(%s;%s,%s)" (prettyP d p) (prettyS (d + 1) s1) (prettyS (d + 1) s2)
+prettyS d (Scall name p c) = printf "CALL(%s:%s;%s)" name (prettyP d p) (prettyC d c)
 
 instance Show Producer where
   show = prettyP 0
@@ -65,23 +90,28 @@ instance Show Statement where
 -- ** Reduction
 
 -- | reduce a statement
-reduceStatement :: Statement -> Except String Statement
-reduceStatement (Sop op (Pnum n1) (Pnum n2) c) = return (Spair (Pnum (op n1 n2)) c)
-reduceStatement (Sop {}) = throwError "Cannot reduce statement with non-numeric producers"
-reduceStatement (Sifz (Pnum 0) s1 _) = return s1
-reduceStatement (Sifz (Pnum _) _ s2) = return s2
-reduceStatement (Sifz {}) = throwError "Cannot reduce statement with non-numeric producer in ifz"
-reduceStatement (Spair (Pmu f) c) = return (f c)
-reduceStatement (Spair n@(Pnum _) (Cmu f)) = return (f n)
-reduceStatement (Spair (Pvar _) _) = throwError "Bad producer Pvar"
-reduceStatement (Spair _ (Cvar _)) = throwError "Bad consumer Cvar"
-reduceStatement (Spair _ Cstar) = throwError "Reduction stops with <*>"
+reduceStatement :: Program -> Statement -> Except String Statement
+reduceStatement _ (Sop op (Pnum n1) (Pnum n2) c) = return (Spair (Pnum (op n1 n2)) c)
+reduceStatement _ (Sop {}) = throwError "Cannot reduce statement with non-numeric producers"
+reduceStatement _ (Sifz (Pnum 0) s1 _) = return s1
+reduceStatement _ (Sifz (Pnum _) _ s2) = return s2
+reduceStatement _ (Sifz {}) = throwError "Cannot reduce statement with non-numeric producer in ifz"
+reduceStatement _ (Spair (Pmu f) c) = return (f c)
+reduceStatement _ (Spair n@(Pnum _) (Cmu f)) = return (f n)
+reduceStatement _ (Spair (Pvar _) _) = throwError "Bad producer Pvar"
+reduceStatement _ (Spair _ (Cvar _)) = throwError "Bad consumer Cvar"
+reduceStatement _ (Spair _ Cstar) = throwError "Reduction stops with <*>"
+reduceStatement prog (Scall name n@(Pnum _) c) =
+  case lookup name prog of
+    Just f -> return (f n c)
+    Nothing -> throwError $ printf "Function %s not defined" name
+reduceStatement _prog (Scall _name _ _) = throwError $ printf "Only call with values"
 
 -- | reduce a statement iteratively until no more reductions are possible
 reduceIter :: Statement -> Except String [Statement]
 reduceIter s = (s :) <$> go s
   where
-    go s = (reduceStatement s >>= (\s' -> (s' :) <$> go s')) `catchError` const (return [])
+    go s = (reduceStatement defined s >>= (\s' -> (s' :) <$> go s')) `catchError` const (return [])
 
 -- | reduce a statement and print the list
 reduceIterList :: Statement -> IO ()
@@ -141,6 +171,18 @@ egf1 = flet 5 (\x -> 2 + x)
 
 egf2 :: Fun
 egf2 = flet (2 * 2) (\x -> x * x)
+
+defined :: Program
+defined =
+  [ ( "fct",
+      \x a -> Sifz x (Spair 1 a) (sminus x (Pnum 1) (Cmu \y -> Scall "fct" y (Cmu \z -> smul x z a)))
+    )
+  ]
+
+instance IsString Producer where
+  fromString s = case reads s of
+    [(n, "")] -> Pnum n
+    _ -> error $ "Cannot parse Producer from string: " ++ s
 
 -- |
 -- ** low level macros
