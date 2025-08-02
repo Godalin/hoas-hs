@@ -29,6 +29,10 @@ data Producer
     Pmu (Consumer -> Statement)
   | -- | <number> constant
     Pnum Int
+  | -- | <data> data constructor
+    Pcon Name [Producer] [Consumer]
+  | -- | <codata> codata constructor
+    Pcocase [(Name, Definition)]
   | -- | <helper> constructor for printing
     Pvar Int
 
@@ -39,6 +43,10 @@ data Consumer
     Cmu (Producer -> Statement)
   | -- | <global> consumer
     Cstar
+  | -- | <codata> destructor
+    Cdes Name [Producer] [Consumer]
+  | -- | <data> destructor
+    Ccase [(Name, Definition)]
   | -- | <helper> constructor for printing
     Cvar Int
 
@@ -71,13 +79,32 @@ type Program = [(Name, Definition)]
 
 prettyP :: Int -> Producer -> String
 prettyP d (Pmu f) = printf "μ(%s).%s" (prettyC d (Cvar d)) (prettyS (d + 1) (f (Cvar d)))
-prettyP _ (Pnum n) = printf "{%d}" n
+prettyP _ (Pnum n) = printf "[%d]" n
+prettyP d (Pcon name ps ns) = printf "Kon{%s:%s;%s}" name (prettyPs d ps) (prettyCs d ns)
+prettyP d (Pcocase defs) =
+  printf "cocase{%s}" (intercalate "|" $ map (\(name, f) -> printf "%s" name (prettyDef d f)) defs)
 prettyP _ (Pvar n) = printf "x%d" n
+
+prettyPs :: Int -> [Producer] -> String
+prettyPs d = intercalate "," . map (prettyP d)
 
 prettyC :: Int -> Consumer -> String
 prettyC d (Cmu f) = printf "μ~(%s).%s" (prettyP d (Pvar d)) (prettyS (d + 1) (f (Pvar d)))
 prettyC _ Cstar = "{*}"
+prettyC d (Cdes name ps ns) = printf "Des{%s:%s;%s}" name (prettyPs d ps) (prettyCs d ns)
+prettyC d (Ccase defs) =
+  printf "case{%s}" (intercalate "|" $ map (\(name, f) -> printf "%s" name (prettyDef d f)) defs)
 prettyC _ (Cvar n) = printf "a%d" n
+
+prettyCs :: Int -> [Consumer] -> String
+prettyCs d = intercalate "," . map (prettyC d)
+
+prettyDef :: Int -> Definition -> String
+prettyDef d (Definition np nc f) =
+  printf "[%s].[%s].%s" (prettyPs d vps) (prettyCs d vns) (prettyS (d + np + nc) (f vps vns))
+    where
+      vps = map Pvar [d .. d + np]
+      vns = map Cvar [d + np .. d + np + nc]
 
 prettyS :: Int -> Statement -> String
 prettyS d (Spair p c) = printf "<%s|%s>" (prettyP d p) (prettyC d c)
@@ -87,8 +114,7 @@ prettyS d (Sop op p1 p2 c) = case op 1 1 of
   1 -> printf "op*(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
   _ -> printf "op?(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
 prettyS d (Sifz p s1 s2) = printf "ifz(%s;%s,%s)" (prettyP d p) (prettyS (d + 1) s1) (prettyS (d + 1) s2)
-prettyS d (Scall name ps cs) = printf "CALL(%s:%s;%s)" name
-  (intercalate "," $ map (prettyP d) ps) (intercalate "," $ map (prettyC d) cs)
+prettyS d (Scall name ps cs) = printf "CALL(%s:%s;%s)" name (prettyPs d ps) (prettyCs d cs)
 
 instance Show Producer where
   show = prettyP 0
@@ -108,21 +134,38 @@ instance Show Statement where
 reduceStatement :: Program -> Statement -> Except String Statement
 reduceStatement _ (Sop op (Pnum n1) (Pnum n2) c) = return (Spair (Pnum (op n1 n2)) c)
 reduceStatement _ (Sop {}) = throwError "Cannot reduce statement with non-numeric producers"
-reduceStatement _ (Spair (Pvar _) _) = throwError "Bad producer Pvar"
-reduceStatement _ (Spair _ (Cvar _)) = throwError "Bad consumer Cvar"
 reduceStatement _ (Sifz (Pnum 0) s1 _) = return s1
 reduceStatement _ (Sifz (Pnum _) _ s2) = return s2
 reduceStatement _ (Sifz {}) = throwError "Cannot reduce statement with non-numeric producer in ifz"
 reduceStatement _ (Spair (Pmu f) c) = return (f c)
 reduceStatement _ (Spair pv@(Pnum _) (Cmu f)) = return (f pv)
+reduceStatement _ (Spair (Pcon name ps cs) (Ccase defs)) = do
+  if all valueP ps && all valueN cs then do
+    def <- withError (printf "Data: In %s " name ++) (reduceName name defs)
+    reduceDefinition def ps cs
+  else throwError "Data: Only reduce with values"
+reduceStatement _ (Spair (Pcocase defs) (Cdes name ps cs)) = do
+  if all valueP ps && all valueN cs then do
+    def <- withError (printf "Codata: In %s " name ++) (reduceName name defs)
+    reduceDefinition def ps cs
+  else throwError "Codata: Only reduce with values"
 reduceStatement _ (Spair _ Cstar) = throwError "Reduction stops with <*>"
-reduceStatement prog (Scall name ps cs) | all valueP ps && all valueN cs =
-  case lookup name prog of
-    Just (Definition np nc f)
-      | np == length ps && nc == length cs -> return (f ps cs)
-      | otherwise -> throwError "Function: Wrong numbers of arguments"
-    Nothing -> throwError $ printf "Function: %s not defined" name
-reduceStatement _ (Scall {}) = throwError "Function: Only call with values"
+reduceStatement _ (Spair {}) = throwError "Invalid reduction"
+reduceStatement prog (Scall name ps cs) = do
+  if all valueP ps && all valueN cs then do
+    def <- withError ("Function: " ++) (reduceName name prog)
+    reduceDefinition def ps cs
+  else throwError "Function: Only call with values"
+
+reduceName :: String -> [(Name, Definition)] -> Except String Definition
+reduceName name defs = case lookup name defs of
+  Just def -> return def
+  Nothing  -> throwError $ printf "Binding: [%s] not defined" name
+
+reduceDefinition :: Definition -> [Producer] -> [Consumer] -> Except String Statement
+reduceDefinition (Definition np nc f) ps cs
+  | np == length ps && nc == length cs = return (f ps cs)
+  | otherwise = throwError "Binding: Wrong numbers of arguments"
 
 valueP :: Producer -> Bool
 valueP (Pnum _) = True
