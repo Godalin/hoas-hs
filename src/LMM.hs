@@ -9,6 +9,7 @@ module LMM where
 
 import           Control.Monad
 import           Control.Monad.Except
+import           Data.List
 import           Data.String
 import           Text.Printf
 
@@ -20,7 +21,7 @@ import           Text.Printf
 
 -- | producer
 data Producer
-  = -- | The "μ" operator
+  = -- | the "μ" operator
     Pmu (Consumer -> Statement)
   | -- | number constant
     Pnum Int
@@ -29,7 +30,7 @@ data Producer
 
 -- | consumer
 data Consumer
-  = -- | The "mu tilde" operator
+  = -- | the "mu tilde" operator
     Cmu (Producer -> Statement)
   | -- | the global consumer
     Cstar
@@ -50,13 +51,13 @@ data Statement
 -- | ** top level definitions
 
 -- | definitions
-type Definition = (Name, [Producer] -> [Consumer] -> Statement)
+type Definition = [Producer] -> [Consumer] -> Statement
 
 -- | names
 type Name = String
 
 -- | programs
-type Program = [Definition]
+type Program = [(Name, Definition)]
 
 prettyP :: Int -> Producer -> String
 prettyP d (Pmu f) = printf "μ(%s).%s" (prettyC d (Cvar d)) (prettyS (d + 1) (f (Cvar d)))
@@ -76,7 +77,8 @@ prettyS d (Sop op p1 p2 c) = case op 1 1 of
   1 -> printf "op*(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
   _ -> printf "op?(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
 prettyS d (Sifz p s1 s2) = printf "ifz(%s;%s,%s)" (prettyP d p) (prettyS (d + 1) s1) (prettyS (d + 1) s2)
-prettyS d (Scall name ps cs) = printf "CALL(%s:%s;%s)" name (concatMap (prettyP d) ps) (concatMap (prettyC d) cs)
+prettyS d (Scall name ps cs) = printf "CALL(%s:%s;%s)" name
+  (intercalate "," $ map (prettyP d) ps) (intercalate "," $ map (prettyC d) cs)
 
 instance Show Producer where
   show = prettyP 0
@@ -98,7 +100,7 @@ reduceStatement _ (Sifz (Pnum 0) s1 _) = return s1
 reduceStatement _ (Sifz (Pnum _) _ s2) = return s2
 reduceStatement _ (Sifz {}) = throwError "Cannot reduce statement with non-numeric producer in ifz"
 reduceStatement _ (Spair (Pmu f) c) = return (f c)
-reduceStatement _ (Spair n@(Pnum _) (Cmu f)) = return (f n)
+reduceStatement _ (Spair pv@(Pnum _) (Cmu f)) = return (f pv)
 reduceStatement _ (Spair (Pvar _) _) = throwError "Bad producer Pvar"
 reduceStatement _ (Spair _ (Cvar _)) = throwError "Bad consumer Cvar"
 reduceStatement _ (Spair _ Cstar) = throwError "Reduction stops with <*>"
@@ -159,7 +161,10 @@ fcall name ps cs = Pmu (\a -> Scall name ps (cs ++ [a]))
 
 type FDefinition = [Producer] -> [Consumer] -> Producer
 
-instance Num Producer where
+fdef :: Name -> FDefinition -> (Name, Definition)
+fdef name def = (name, \ps csa -> Spair (def ps (init csa)) (last csa))
+
+instance Num Fun where
   (+) = fop (+)
   (-) = fop (-)
   (*) = fop (*)
@@ -198,10 +203,10 @@ defined =
         (sminus x 1 (Cmu \z -> Scall "fib" [z] [Cmu \w ->
           sminus x 2 (Cmu \z1 -> Scall "fib" [z1] [Cmu \w1 ->
             splus w w1 a])]))))
-    )
+    ),
+    fdef "m2" $ \[x] [] -> x * 2,
+    fdef "a2" $ \[x] [] -> x + 2
   ]
-
-
 
 instance IsString Producer where
   fromString s = case reads s of
