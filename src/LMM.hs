@@ -51,10 +51,13 @@ data Statement
 -- | ** top level definitions
 
 -- | definitions
-type Definition = [Producer] -> [Consumer] -> Statement
+data Definition = Definition Int Int ([Producer] -> [Consumer] -> Statement)
 
 -- | names
 type Name = String
+
+define :: Name -> Int -> Int -> ([Producer] -> [Consumer] -> Statement) -> (Name, Definition)
+define name np nc f = (name, Definition np nc f)
 
 -- | programs
 type Program = [(Name, Definition)]
@@ -96,19 +99,21 @@ instance Show Statement where
 reduceStatement :: Program -> Statement -> Except String Statement
 reduceStatement _ (Sop op (Pnum n1) (Pnum n2) c) = return (Spair (Pnum (op n1 n2)) c)
 reduceStatement _ (Sop {}) = throwError "Cannot reduce statement with non-numeric producers"
+reduceStatement _ (Spair (Pvar _) _) = throwError "Bad producer Pvar"
+reduceStatement _ (Spair _ (Cvar _)) = throwError "Bad consumer Cvar"
 reduceStatement _ (Sifz (Pnum 0) s1 _) = return s1
 reduceStatement _ (Sifz (Pnum _) _ s2) = return s2
 reduceStatement _ (Sifz {}) = throwError "Cannot reduce statement with non-numeric producer in ifz"
 reduceStatement _ (Spair (Pmu f) c) = return (f c)
 reduceStatement _ (Spair pv@(Pnum _) (Cmu f)) = return (f pv)
-reduceStatement _ (Spair (Pvar _) _) = throwError "Bad producer Pvar"
-reduceStatement _ (Spair _ (Cvar _)) = throwError "Bad consumer Cvar"
 reduceStatement _ (Spair _ Cstar) = throwError "Reduction stops with <*>"
 reduceStatement prog (Scall name ps cs) | all valueP ps && all valueN cs =
   case lookup name prog of
-    Just f  -> return (f ps cs)
-    Nothing -> throwError $ printf "Function %s not defined" name
-reduceStatement _prog (Scall _name _ _) = throwError $ printf "Only call with values"
+    Just (Definition np nc f)
+      | np == length ps && nc == length cs -> return (f ps cs)
+      | otherwise -> throwError "Function: Wrong numbers of arguments"
+    Nothing -> throwError $ printf "Function: %s not defined" name
+reduceStatement _ (Scall {}) = throwError "Function: Only call with values"
 
 valueP :: Producer -> Bool
 valueP (Pnum _) = True
@@ -159,10 +164,8 @@ flet bind body = Pmu (\a -> Spair bind (Cmu (\x -> Spair (body x) a)))
 fcall :: Name -> [Producer] -> [Consumer] -> Producer
 fcall name ps cs = Pmu (\a -> Scall name ps (cs ++ [a]))
 
-type FDefinition = [Producer] -> [Consumer] -> Producer
-
-fdef :: Name -> FDefinition -> (Name, Definition)
-fdef name def = (name, \ps csa -> Spair (def ps (init csa)) (last csa))
+fdef :: Name -> Int -> Int -> ([Producer] -> [Consumer] -> Producer) -> (Name, Definition)
+fdef name np nc def = (name, Definition np (nc + 1) \ps csa -> Spair (def ps (init csa)) (last csa))
 
 instance Num Fun where
   (+) = fop (+)
@@ -172,7 +175,6 @@ instance Num Fun where
   abs = error "Not Supported: abs"
   signum = error "Not Supported: signum"
   fromInteger n = Pnum (fromInteger n)
-
 
 -- |
 -- ** Reduce `Fun`
@@ -195,17 +197,15 @@ egf2 = flet (2 * 2) (\x -> x * x)
 
 defined :: Program
 defined =
-  [ ( "fct",
+  [ define "fct" 1 1
       \[x] [a] -> Sifz x (Spair 1 a) (sminus x 1 (Cmu \y -> Scall "fct" [y] [Cmu \z -> smul x z a]))
-    ),
-    ( "fib",
+  , define "fib" 1 1
       \[x] [a] -> Sifz x (Spair 1 a) (sminus x 1 (Cmu \y -> Sifz y (Spair 1 a)
         (sminus x 1 (Cmu \z -> Scall "fib" [z] [Cmu \w ->
           sminus x 2 (Cmu \z1 -> Scall "fib" [z1] [Cmu \w1 ->
             splus w w1 a])]))))
-    ),
-    fdef "m2" $ \[x] [] -> x * 2,
-    fdef "a2" $ \[x] [] -> x + 2
+  , fdef "m2" 1 0 \[x] [] -> x * 2
+  , fdef "a2" 1 0 \[x] [] -> x + 2
   ]
 
 instance IsString Producer where
