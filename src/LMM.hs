@@ -1,6 +1,7 @@
 {-# HLINT ignore "Avoid lambda" #-}
-{-# LANGUAGE BlockArguments    #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE BlockArguments       #-}
+{-# LANGUAGE OverloadedStrings    #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
@@ -13,31 +14,36 @@ import           Data.List
 import           Data.String
 import           Text.Printf
 
--- | * LMM - Lambda Mu Mu~
+-- |
+-- * LMM - Lambda Mu Mu~
 -- Higher and lower representation
 
--- | ** `Core` language
+-- |
+-- ** `Core` language
 -- Producers, Consumers and Statements
 
--- | producer
+-- |
+-- *** Producers
 data Producer
-  = -- | the "μ" operator
+  = -- | <μ> operator
     Pmu (Consumer -> Statement)
-  | -- | number constant
+  | -- | <number> constant
     Pnum Int
   | -- | <helper> constructor for printing
     Pvar Int
 
--- | consumer
+-- |
+-- *** Consumers
 data Consumer
-  = -- | the "mu tilde" operator
+  = -- | <μ~> operator
     Cmu (Producer -> Statement)
-  | -- | the global consumer
+  | -- | <global> consumer
     Cstar
   | -- | <helper> constructor for printing
     Cvar Int
 
--- | statement
+-- |
+-- *** Statements
 data Statement
   = -- | pair of Producer and Consumer
     Spair Producer Consumer
@@ -48,7 +54,8 @@ data Statement
   | -- | function calls
     Scall Name [Producer] [Consumer]
 
--- | ** top level definitions
+-- |
+-- *** Top level definitions
 
 -- | definitions
 data Definition = Definition Int Int ([Producer] -> [Consumer] -> Statement)
@@ -92,8 +99,10 @@ instance Show Consumer where
 instance Show Statement where
   show = prettyS 0
 
+
+
 -- |
--- ** Reduction
+-- ** Reduction of `Core`
 
 -- | reduce a statement
 reduceStatement :: Program -> Statement -> Except String Statement
@@ -146,9 +155,17 @@ reduceIterInteractive s = do
     Left err         -> putStrLn $ "Error: " ++ err
     Right statements -> mapM_ ((putStrLn . ("--> " ++) . show) >=> const (void getLine)) statements
 
+
+
 -- |
 -- ** Example Constructs
--- Use higher order syntax to define higher order language `Fun`
+
+-- |
+-- *** The high level `Fun` language
+-- Use higher order syntax to define high level language.
+-- Translate it directly into `Core`
+
+-- | terms in `Fun` are producers
 type Fun = Producer
 
 -- | if operator
@@ -177,7 +194,7 @@ instance Num Fun where
   fromInteger n = Pnum (fromInteger n)
 
 -- |
--- ** Reduce `Fun`
+-- *** Reduce `Fun`
 
 -- | auto reduce
 reduceFunList :: Producer -> IO ()
@@ -188,7 +205,7 @@ reduceFunInteractive :: Producer -> IO ()
 reduceFunInteractive = reduceIterInteractive . stop
 
 -- |
--- ** `Fun` Examples
+-- *** `Fun` Examples
 egf1 :: Fun
 egf1 = flet 5 (\x -> 2 + x)
 
@@ -213,8 +230,10 @@ instance IsString Producer where
     [(n, "")] -> Pnum n
     _         -> error $ "Cannot parse Producer from string: " ++ s
 
+
+
 -- |
--- ** low level macros
+-- ** Low level macros for `Core`
 
 -- | plus
 splus :: Producer -> Producer -> Consumer -> Statement
