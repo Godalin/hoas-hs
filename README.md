@@ -1,5 +1,8 @@
 # `hoas-hs`: A Haskell Package for Many Theoretic Calculi, Taking Advantage of *Higher-Order Abstract Syntax*
 
+Environment:
+- ghc 9.12.2 (or adjust the `cabal.project` file)
+
 Build / Repl:
 
 ```sh
