@@ -78,7 +78,7 @@ cabal repl
 reduceFunList $ fcall "fct" [6] []
 ```
 
-will give a reduction list to `⟨[720]|⋆⟩`, representing that the calculation result of $6!=720$.
+will give a reduction list to `⟨[720]|⋆⟩`, representing that the calculation result is $6!=720$.
 
 
 
