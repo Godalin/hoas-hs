@@ -1,4 +1,4 @@
-# A Haskell Package of Many Theoretic Calculi, Taking Advantage of *Higher-Order Abstract Syntax*
+# `hoas-hs`: A Haskell Package for Many Theoretic Calculi, Taking Advantage of *Higher-Order Abstract Syntax*
 
 Build / Repl:
 
@@ -6,6 +6,8 @@ Build / Repl:
 cabal build
 cabal repl
 ```
+
+
 
 ## Untyped $\lambda$ Calculus
 
