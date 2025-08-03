@@ -11,7 +11,6 @@ module LMM where
 import           Control.Monad
 import           Control.Monad.Except
 import           Data.List
-import           Data.String
 import           Text.Printf
 
 -- |
@@ -80,34 +79,34 @@ type Program = [(Name, Definition)]
 prettyP :: Int -> Producer -> String
 prettyP d (Pmu f) = printf "μ(%s).%s" (prettyC d (Cvar d)) (prettyS (d + 1) (f (Cvar d)))
 prettyP _ (Pnum n) = printf "[%d]" n
-prettyP d (Pcon name ps ns) = printf "Kon{%s:%s;%s}" name (prettyPs d ps) (prettyCs d ns)
+prettyP d (Pcon name ps ns) = printf "𝕂{%s:%s;%s}" name (prettyPs d ps) (prettyCs d ns)
 prettyP d (Pcocase defs) =
-  printf "cocase{%s}" (intercalate "|" $ map (\(name, f) -> printf "%s" name (prettyDef d f)) defs)
+  printf "cocase{%s}" (intercalate "|" $ map (\(name, f) -> name ++ prettyDef d f) defs)
 prettyP _ (Pvar n) = printf "x%d" n
 
 prettyPs :: Int -> [Producer] -> String
 prettyPs d = intercalate "," . map (prettyP d)
 
 prettyC :: Int -> Consumer -> String
-prettyC d (Cmu f) = printf "μ~(%s).%s" (prettyP d (Pvar d)) (prettyS (d + 1) (f (Pvar d)))
-prettyC _ Cstar = "{*}"
-prettyC d (Cdes name ps ns) = printf "Des{%s:%s;%s}" name (prettyPs d ps) (prettyCs d ns)
+prettyC d (Cmu f) = printf "̃μ(%s).%s" (prettyP d (Pvar d)) (prettyS (d + 1) (f (Pvar d)))
+prettyC _ Cstar = "⋆"
+prettyC d (Cdes name ps ns) = printf "𝔻{%s:%s;%s}" name (prettyPs d ps) (prettyCs d ns)
 prettyC d (Ccase defs) =
-  printf "case{%s}" (intercalate "|" $ map (\(name, f) -> printf "%s" name (prettyDef d f)) defs)
-prettyC _ (Cvar n) = printf "a%d" n
+  printf "case{%s}" (intercalate "|" $ map (\(name, f) -> name ++ prettyDef d f) defs)
+prettyC _ (Cvar n) = printf "α%d" n
 
 prettyCs :: Int -> [Consumer] -> String
 prettyCs d = intercalate "," . map (prettyC d)
 
 prettyDef :: Int -> Definition -> String
 prettyDef d (Definition np nc f) =
-  printf "[%s].[%s].%s" (prettyPs d vps) (prettyCs d vns) (prettyS (d + np + nc) (f vps vns))
+  printf "[%s;%s].%s" (prettyPs d vps) (prettyCs d vns) (prettyS (d + np + nc) (f vps vns))
     where
-      vps = map Pvar [d .. d + np]
-      vns = map Cvar [d + np .. d + np + nc]
+      vps = map Pvar [d .. d + np - 1]
+      vns = map Cvar [d + np .. d + np + nc - 1]
 
 prettyS :: Int -> Statement -> String
-prettyS d (Spair p c) = printf "<%s|%s>" (prettyP d p) (prettyC d c)
+prettyS d (Spair p c) = printf "⟨%s|%s⟩" (prettyP d p) (prettyC d c)
 prettyS d (Sop op p1 p2 c) = case op 1 1 of
   2 -> printf "op+(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
   0 -> printf "op-(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
@@ -168,13 +167,17 @@ reduceDefinition (Definition np nc f) ps cs
   | otherwise = throwError "Binding: Wrong numbers of arguments"
 
 valueP :: Producer -> Bool
-valueP (Pnum _) = True
-valueP _        = False
+valueP (Pnum _)      = True
+valueP (Pcon _ ps _) = all valueP ps
+valueP (Pcocase {})  = True
+valueP _             = False
 
 valueN :: Consumer -> Bool
-valueN (Cmu _) = True
-valueN Cstar   = True
-valueN _       = False
+valueN (Cmu _)    = True
+valueN Cstar      = True
+valueN (Cdes {})  = True
+valueN (Ccase {}) = True
+valueN _          = False
 
 -- | reduce a statement iteratively until no more reductions are possible
 reduceIter :: Statement -> Except String [Statement]
@@ -211,6 +214,8 @@ reduceIterInteractive s = do
 -- | terms in `Fun` are producers
 type Fun = Producer
 
+data FDef = FDef Int Int ([Producer] -> [Consumer] -> Producer)
+
 -- | if operator
 fifz :: Fun -> Fun -> Fun -> Fun
 fifz test then' else' = Pmu (\a -> Sifz test (Spair then' a) (Spair else' a))
@@ -221,11 +226,50 @@ fop op p1 p2 = Pmu (\a -> Sop op p1 p2 a)
 flet :: Fun -> (Fun -> Fun) -> Fun
 flet bind body = Pmu (\a -> Spair bind (Cmu (\x -> Spair (body x) a)))
 
-fcall :: Name -> [Producer] -> [Consumer] -> Producer
+fcall :: Name -> [Producer] -> [Consumer] -> Fun
 fcall name ps cs = Pmu (\a -> Scall name ps (cs ++ [a]))
 
-fdef :: Name -> Int -> Int -> ([Producer] -> [Consumer] -> Producer) -> (Name, Definition)
-fdef name np nc def = (name, Definition np (nc + 1) \ps csa -> Spair (def ps (init csa)) (last csa))
+fdef :: Name -> FDef -> (Name, Definition)
+fdef name (FDef np nc def) = (name, Definition np (nc + 1) \ps csa -> Spair (def ps (init csa)) (last csa))
+
+fdef' :: Name -> Int -> Int -> ([Producer] -> [Consumer] -> Producer) -> (Name, Definition)
+fdef' name np nc def = fdef name (FDef np nc def)
+
+-- |
+-- higher order functions
+
+-- | abstraction
+flam :: (Producer -> Producer) -> Producer
+flam f = Pcocase [("@", Definition 1 1 \[x] [a] -> Spair (f x) a)]
+
+-- | application
+fapp :: Producer -> Producer -> Producer
+fapp t1 t2 = Pmu \a -> Spair t1 (Cdes "@" [t2] [a])
+
+(@) :: Producer -> Producer -> Producer
+(@) = fapp
+
+-- |
+-- *** Data and Codata
+
+fcon :: Name -> [Fun] -> Fun
+fcon name ps = Pcon name ps []
+
+fcase :: Fun -> [(Name, FBind)] -> Fun
+fcase p fbinds = Pmu \a -> Spair p (Ccase $
+  map (\(name, FDef np nc def) ->
+    (name, Definition np nc (\ps cs -> Spair (def ps cs) a))) (fmap (fmap fbind2def) fbinds))
+
+fdes :: Fun -> Name -> [Fun] -> Fun
+fdes p name ps = Pmu \a -> Spair p (Cdes name ps [a])
+
+fcocase :: [(Name, FBind)] -> Fun
+fcocase fbinds = Pcocase $ map (uncurry fdef) (fmap (fmap fbind2def) fbinds)
+
+data FBind = FBind Int ([Fun] -> Fun)
+
+fbind2def :: FBind -> FDef
+fbind2def (FBind n f) = FDef n 0 \ps _ -> f ps
 
 instance Num Fun where
   (+) = fop (+)
@@ -257,21 +301,41 @@ egf2 = flet (2 * 2) (\x -> x * x)
 
 defined :: Program
 defined =
-  [ define "fct" 1 1
+  [
+    -- factorial in `Core`
+    define "fct" 1 1
       \[x] [a] -> Sifz x (Spair 1 a) (sminus x 1 (Cmu \y -> Scall "fct" [y] [Cmu \z -> smul x z a]))
+
+    -- fibonacci in `Core`
   , define "fib" 1 1
       \[x] [a] -> Sifz x (Spair 1 a) (sminus x 1 (Cmu \y -> Sifz y (Spair 1 a)
         (sminus x 1 (Cmu \z -> Scall "fib" [z] [Cmu \w ->
           sminus x 2 (Cmu \z1 -> Scall "fib" [z1] [Cmu \w1 ->
             splus w w1 a])]))))
-  , fdef "m2" 1 0 \[x] [] -> x * 2
-  , fdef "a2" 1 0 \[x] [] -> x + 2
-  ]
 
-instance IsString Producer where
-  fromString s = case reads s of
-    [(n, "")] -> Pnum n
-    _         -> error $ "Cannot parse Producer from string: " ++ s
+    -- definitions in `Fun`
+  , fdef' "m2" 1 0 \[x] [] -> x * 2
+  , fdef' "a2" 1 0 \[x] [] -> x + 2
+  , fdef' "swap" 1 0 \[x] [] -> fcase x
+    [ ("Tup", FBind 2 \[x, y] -> fcon "Tup" [y, x])
+    ]
+  , fdef' "tup_lazy" 2 0 \[x, y] [] -> fcocase
+    [ ("fst", FBind 0 \[] -> x)
+    , ("snd", FBind 0 \[] -> y)
+    ]
+  , fdef' "swap_lazy" 1 0 \[x] [] -> fcocase
+    [ ("fst", FBind 0 \[] -> fdes x "snd" [])
+    , ("snd", FBind 0 \[] -> fdes x "fst" [])
+    ]
+  , fdef' "sum" 1 0 \[xs] [] -> fcase xs
+    [ ("Nil", FBind 0 \[] -> 0)
+    , ("Cons", FBind 2 \[y, ys] -> y + fcall "sum" [ys] [])
+    ]
+  , fdef' "repeat" 1 0 \[x] [] -> fcocase [
+      ("hd", FBind 0 \[] -> x),
+      ("tl", FBind 0 \[] -> fcall "repeat" [x] [])
+    ]
+  ]
 
 
 
