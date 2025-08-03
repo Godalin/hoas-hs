@@ -1,4 +1,4 @@
-# A Haskell Package of Many Theoretic Calculi
+# A Haskell Package of Many Theoretic Calculi, Taking Advantage of *Higher-Order Abstract Syntax*
 
 Build / Repl:
 
