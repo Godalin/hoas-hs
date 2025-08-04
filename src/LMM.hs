@@ -236,6 +236,28 @@ fdef' :: Name -> Int -> Int -> ([Producer] -> [Consumer] -> Producer) -> (Name, 
 fdef' name np nc def = fdef name (FDef np nc def)
 
 -- |
+-- *** Data and Codata
+
+fcon :: Name -> [Fun] -> Fun
+fcon name ps = Pcon name ps []
+
+fcase :: Fun -> [(Name, FBind)] -> Fun
+fcase p fbinds = Pmu \a -> Spair p (Ccase $
+  map (\(name, FDef np nc def) ->
+    (name, Definition np nc (\ps cs -> Spair (def ps cs) a))) (fmap (fmap fbind2def) fbinds))
+
+fdes :: Fun -> Name -> [Fun] -> Fun
+fdes p name ps = Pmu \a -> Spair p (Cdes name ps [a])
+
+fcocase :: [(Name, FBind)] -> Fun
+fcocase fbinds = Pcocase $ map (uncurry fdef) (fmap (fmap fbind2def) fbinds)
+
+data FBind = FBind Int ([Fun] -> Fun)
+
+fbind2def :: FBind -> FDef
+fbind2def (FBind n f) = FDef n 0 \ps _ -> f ps
+
+-- |
 -- higher order functions
 
 -- | abstraction
@@ -259,29 +281,7 @@ flab :: (Lab -> Fun) -> Fun
 flab bind = Pmu \a -> Spair (bind a) a
 
 fgoto :: Fun -> Lab -> Fun
-fgoto t a = Pmu \b -> Spair t a
-
--- |
--- *** Data and Codata
-
-fcon :: Name -> [Fun] -> Fun
-fcon name ps = Pcon name ps []
-
-fcase :: Fun -> [(Name, FBind)] -> Fun
-fcase p fbinds = Pmu \a -> Spair p (Ccase $
-  map (\(name, FDef np nc def) ->
-    (name, Definition np nc (\ps cs -> Spair (def ps cs) a))) (fmap (fmap fbind2def) fbinds))
-
-fdes :: Fun -> Name -> [Fun] -> Fun
-fdes p name ps = Pmu \a -> Spair p (Cdes name ps [a])
-
-fcocase :: [(Name, FBind)] -> Fun
-fcocase fbinds = Pcocase $ map (uncurry fdef) (fmap (fmap fbind2def) fbinds)
-
-data FBind = FBind Int ([Fun] -> Fun)
-
-fbind2def :: FBind -> FDef
-fbind2def (FBind n f) = FDef n 0 \ps _ -> f ps
+fgoto t a = Pmu \_ -> Spair t a
 
 instance Num Fun where
   (+) = fop (+)
