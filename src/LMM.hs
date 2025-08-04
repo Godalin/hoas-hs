@@ -204,6 +204,31 @@ reduceIterInteractive s = do
 
 
 -- |
+-- *** Focusing
+
+class Focusing a where
+  focusing :: a -> a
+
+instance Focusing Producer where
+  focusing = undefined -- TODO
+
+instance Focusing Consumer where
+  focusing = undefined -- TODO
+
+instance Focusing Statement where
+  focusing (Spair p c) = Spair (focusing p) (focusing c)
+  focusing (Sop f p1 p2 c)
+    | not (valueP p1) = Spair p1 (Cmu \x -> Sop f x p2 c)
+    | not (valueP p2) = Spair p2 (Cmu \x -> Sop f p1 x c)
+    | otherwise = Sop f (focusing p1) (focusing p2) (focusing c)
+  focusing (Sifz p s1 s2)
+    | not (valueP p) = Spair (focusing p) (Cmu \x -> Sifz x s1 s2)
+    | otherwise = Sifz (focusing p) (focusing s1) (focusing s2)
+  focusing (Scall name ps cs) = undefined -- TODO
+
+
+
+-- |
 -- ** Example Constructs
 
 -- |
