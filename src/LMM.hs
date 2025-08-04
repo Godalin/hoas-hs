@@ -239,15 +239,27 @@ fdef' name np nc def = fdef name (FDef np nc def)
 -- higher order functions
 
 -- | abstraction
-flam :: (Producer -> Producer) -> Producer
+flam :: (Fun -> Fun) -> Fun
 flam f = Pcocase [("@", Definition 1 1 \[x] [a] -> Spair (f x) a)]
 
 -- | application
-fapp :: Producer -> Producer -> Producer
+fapp :: Fun -> Fun -> Fun
 fapp t1 t2 = Pmu \a -> Spair t1 (Cdes "@" [t2] [a])
 
-(@) :: Producer -> Producer -> Producer
+(@) :: Fun -> Fun -> Fun
 (@) = fapp
+
+-- |
+-- control operators
+
+type Lab = Consumer
+
+-- | labels
+flab :: (Lab -> Fun) -> Fun
+flab bind = Pmu \a -> Spair (bind a) a
+
+fgoto :: Fun -> Lab -> Fun
+fgoto t a = Pmu \b -> Spair t a
 
 -- |
 -- *** Data and Codata
