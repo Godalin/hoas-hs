@@ -132,7 +132,7 @@ prettyS d (Sop op p1 p2 c) =
 prettyS d (Sifz p s1 s2) =
   "ifz(" <> prettyP d p <> ";" <> ul (prettyS (d + 1) s1) <> "," <> ul (prettyS (d + 1) s2) <> ")"
 prettyS d (Scall name ps cs) =
-  "CALL(" <> pretty name <> prettyPs d ps <> ";" <> prettyCs d cs <> ")"
+  "CALL(" <> pretty name <> ":" <> prettyPs d ps <> ";" <> prettyCs d cs <> ")"
 
 green = annotate (color Green)
 cyan = annotate (color Cyan <> bold)
