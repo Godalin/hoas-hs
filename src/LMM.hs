@@ -87,7 +87,7 @@ type Program = [(Name, Definition)]
 
 prettyP :: Int -> Producer -> Doc AnsiStyle
 prettyP d (Pmu f) = green "μ(" <> prettyC d (Cvar d) <> green ")." <> prettyS (d + 1) (f (Cvar d))
-prettyP _ (Pnum n) = intStyle $ "[" <> pretty n <> "]" where
+prettyP _ (Pnum n) = intStyle $ pretty n where
   intStyle = annotate (color Magenta)
 prettyP d (Pcon name ps ns) = "𝕂{" <> pretty name <> ":" <> prettyPs d ps <> ";" <> prettyCs d ns <> "}"
 prettyP d (Pcocase defs) =
