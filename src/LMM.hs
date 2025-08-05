@@ -35,9 +35,6 @@ data Producer
     Pcocase [(Name, Definition)]
   | -- | <helper> constructor for printing
     Pvar Int
-  | -- | <helper> syntactical variable
-    -- only for syntactical transformations
-    Pstx Producer
 
 -- |
 -- *** Consumers
@@ -52,9 +49,6 @@ data Consumer
     Ccase [(Name, Definition)]
   | -- | <helper> constructor for printing
     Cvar Int
-  | -- | <helper> syntactical variable
-    -- only for syntactical transformations
-    Cstx Consumer
 
 -- |
 -- *** Statements
@@ -90,7 +84,6 @@ prettyP d (Pcon name ps ns) = printf "𝕂{%s:%s;%s}" name (prettyPs d ps) (pret
 prettyP d (Pcocase defs) =
   printf "cocase{%s}" (intercalate "|" $ map (\(name, f) -> name ++ prettyDef d f) defs)
 prettyP _ (Pvar n) = printf "x%d" n
-prettyP d (Pstx p) = printf "PVAR{%s}" $ prettyP d p
 
 prettyPs :: Int -> [Producer] -> String
 prettyPs d = intercalate "," . map (prettyP d)
@@ -102,7 +95,6 @@ prettyC d (Cdes name ps ns) = printf "𝔻{%s:%s;%s}" name (prettyPs d ps) (pret
 prettyC d (Ccase defs) =
   printf "case{%s}" (intercalate "|" $ map (\(name, f) -> name ++ prettyDef d f) defs)
 prettyC _ (Cvar n) = printf "α%d" n
-prettyC d (Cstx c) = printf "CVAR{%s}" $ prettyC d c
 
 prettyCs :: Int -> [Consumer] -> String
 prettyCs d = intercalate "," . map (prettyC d)
@@ -140,26 +132,26 @@ instance Show Statement where
 
 -- | reduce a statement
 reduceStatement :: Program -> Statement -> Except String Statement
-reduceStatement _ (unsyntax -> Sop op (Pnum n1) (Pnum n2) c) = return (Spair (Pnum (op n1 n2)) c)
-reduceStatement _ (unsyntax -> Sop {}) = throwError "Cannot reduce statement with non-numeric producers"
-reduceStatement _ (unsyntax -> Sifz (Pnum 0) s1 _) = return s1
-reduceStatement _ (unsyntax -> Sifz (Pnum _) _ s2) = return s2
-reduceStatement _ (unsyntax -> Sifz {}) = throwError "Cannot reduce statement with non-numeric producer in ifz"
-reduceStatement _ (unsyntax -> Spair (Pmu f) c) = return (f c)
-reduceStatement _ (unsyntax -> Spair pv@(Pnum _) (Cmu f)) = return (f pv)
-reduceStatement _ (unsyntax -> Spair (Pcon name ps cs) (Ccase defs)) = do
+reduceStatement _ (Sop op (Pnum n1) (Pnum n2) c) = return (Spair (Pnum (op n1 n2)) c)
+reduceStatement _ (Sop {}) = throwError "Cannot reduce statement with non-numeric producers"
+reduceStatement _ (Sifz (Pnum 0) s1 _) = return s1
+reduceStatement _ (Sifz (Pnum _) _ s2) = return s2
+reduceStatement _ (Sifz {}) = throwError "Cannot reduce statement with non-numeric producer in ifz"
+reduceStatement _ (Spair (Pmu f) c) = return (f c)
+reduceStatement _ (Spair pv@(Pnum _) (Cmu f)) = return (f pv)
+reduceStatement _ (Spair (Pcon name ps cs) (Ccase defs)) = do
   if all valueP ps && all valueN cs then do
     def <- withError (printf "Data: In %s " name ++) (reduceName name defs)
     reduceDefinition def ps cs
   else throwError "Data: Only reduce with values"
-reduceStatement _ (unsyntax -> Spair (Pcocase defs) (Cdes name ps cs)) = do
+reduceStatement _ (Spair (Pcocase defs) (Cdes name ps cs)) = do
   if all valueP ps && all valueN cs then do
     def <- withError (printf "Codata: In %s " name ++) (reduceName name defs)
     reduceDefinition def ps cs
   else throwError "Codata: Only reduce with values"
-reduceStatement _ (unsyntax -> Spair _ Cstar) = throwError "Reduction stops with <*>"
-reduceStatement _ (unsyntax -> Spair {}) = throwError "Invalid reduction"
-reduceStatement prog (unsyntax -> Scall name ps cs) = do
+reduceStatement _ (Spair _ Cstar) = throwError "Reduction stops with <*>"
+reduceStatement _ (Spair {}) = throwError "Invalid reduction"
+reduceStatement prog (Scall name ps cs) = do
   if all valueP ps && all valueN cs then do
     def <- withError ("Function: " ++) (reduceName name prog)
     reduceDefinition def ps cs
@@ -175,27 +167,11 @@ reduceDefinition (Definition np nc f) ps cs
   | np == length ps && nc == length cs = return (f ps cs)
   | otherwise = throwError "Binding: Wrong numbers of arguments"
 
--- | cancel the syntactical variables
-unsyntax :: Statement -> Statement
-unsyntax (Spair (Pstx p) c)     = unsyntax (Spair p c)
-unsyntax (Spair p (Cstx c))     = unsyntax (Spair p c)
-unsyntax (Sop f (Pstx p1) p2 c) = unsyntax (Sop f p1 p2 c)
-unsyntax (Sop f p1 (Pstx p2) c) = unsyntax (Sop f p1 p2 c)
-unsyntax (Sop f p1 p2 (Cstx c)) = unsyntax (Sop f p1 p2 c)
-unsyntax (Scall name ps cs)     = unsyntax (Scall name (map unpstx ps) (map uncstx cs)) where
-  unpstx (Pstx p) = unpstx p
-  unpstx p        = p
-  uncstx (Cstx c) = uncstx c
-  uncstx c        = c
-unsyntax x                      = x
-
--- | producer values
 valueP :: Producer -> Bool
 valueP (Pnum _)      = True
 valueP (Pcon _ ps _) = all valueP ps
 valueP (Pcocase {})  = True
 valueP (Pvar _)      = True
-valueP (Pstx _)      = True
 valueP _             = False
 
 -- | consumer values (everything)
@@ -205,7 +181,6 @@ valueN Cstar      = True
 valueN (Cdes {})  = True
 valueN (Ccase {}) = True
 valueN (Cvar _)   = True
-valueN (Cstx _)   = True
 -- valueN _          = False
 
 -- | reduce a statement iteratively until no more reductions are possible
@@ -242,42 +217,42 @@ instance Focusing Producer where
   focusing p@(Pvar _)        = p
   focusing p@(Pnum _)        = p
   focusing p@(Pcocase _)     = p
-  focusing (Pmu bind)        = Pmu \a -> focusing (bind (Cstx a))
+  focusing (Pmu bind)        = Pmu \a -> focusing (bind a)
   focusing (Pcon name ps cs) =
     let (vps, nvps) = span valueP ps in
     case nvps of
       []         -> Pcon name (map focusing vps) (map focusing cs)
-      nvp : nvps -> Pmu \a -> Spair (focusing nvp) (Cmu \x -> Spair (Pcon name (vps ++ Pstx x : nvps) cs) (Cstx a))
-  focusing (Pstx p) = Pstx p -- do not touch what's inside Pstx
+      nvp : nvps -> Pmu \a -> Spair (focusing nvp) (Cmu \x -> Spair (Pcon name (vps ++ x : nvps) cs) a)
+  -- focusing (Pstx p) = Pstx p -- do not touch what's inside Pstx
 
 instance Focusing Consumer where
   focusing c@(Cvar _)        = c
   focusing c@(Ccase _)       = c
   focusing Cstar             = Cstar
-  focusing (Cmu bind)        = Cmu \x -> focusing (bind (Pstx x))
+  focusing (Cmu bind)        = Cmu \x -> focusing (bind x)
   focusing (Cdes name ps cs) =
     let (vps, nvps) = span valueP ps in
     case nvps of
       []         -> Cdes name (map focusing vps) (map focusing cs)
       nvp : nvps -> Cmu \y -> Spair (focusing nvp)
-                                (Cmu \x -> Spair (Pstx y)
-                                (Cdes name (vps ++ Pstx x : nvps) cs))
-  focusing (Cstx c) = Cstx c -- do not touch what's inside Cstx
+                                (Cmu \x -> Spair y
+                                (Cdes name (vps ++ x : nvps) cs))
+  -- focusing (Cstx c) = Cstx c -- do not touch what's inside Cstx
 
 instance Focusing Statement where
   focusing (Spair p c) = Spair (focusing p) (focusing c)
   focusing (Sop f p1 p2 c)
-    | not (valueP p1) = Spair p1 (Cmu \x -> focusing (Sop f (Pstx x) p2 c))
-    | not (valueP p2) = Spair p2 (Cmu \x -> focusing (Sop f p1 (Pstx x) c))
+    | not (valueP p1) = Spair p1 (Cmu \x -> focusing (Sop f x p2 c))
+    | not (valueP p2) = Spair p2 (Cmu \x -> focusing (Sop f p1 x c))
     | otherwise = Sop f (focusing p1) (focusing p2) (focusing c)
   focusing (Sifz p s1 s2)
-    | not (valueP p) = Spair (focusing p) (Cmu \x -> Sifz (Pstx x) s1 s2)
+    | not (valueP p) = Spair (focusing p) (Cmu \x -> Sifz x s1 s2)
     | otherwise = Sifz (focusing p) (focusing s1) (focusing s2)
   focusing (Scall name ps cs) =
     let (vps, nvps) = span valueP ps in
     case nvps of
       []         -> Scall name (map focusing vps) (map focusing cs)
-      nvp : nvps -> Spair nvp (Cmu \x -> Scall name (vps ++ Pstx x : nvps) cs)
+      nvp : nvps -> Spair nvp (Cmu \x -> Scall name (vps ++ x : nvps) cs)
 
 
 
