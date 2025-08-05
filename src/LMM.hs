@@ -176,18 +176,22 @@ reduceDefinition (Definition np nc f) ps cs
   | otherwise = throwError "Binding: Wrong numbers of arguments"
 
 -- | cancel the syntactical variables
-unsyntax :: Statement -> Statement
-unsyntax (Spair (Pstx p) c)     = unsyntax (Spair p c)
-unsyntax (Spair p (Cstx c))     = unsyntax (Spair p c)
-unsyntax (Sop f (Pstx p1) p2 c) = unsyntax (Sop f p1 p2 c)
-unsyntax (Sop f p1 (Pstx p2) c) = unsyntax (Sop f p1 p2 c)
-unsyntax (Sop f p1 p2 (Cstx c)) = unsyntax (Sop f p1 p2 c)
-unsyntax (Scall name ps cs)     = unsyntax (Scall name (map unpstx ps) (map uncstx cs)) where
-  unpstx (Pstx p) = unpstx p
-  unpstx p        = p
-  uncstx (Cstx c) = uncstx c
-  uncstx c        = c
-unsyntax x                      = x
+class Unsyntax a where
+  unsyntax :: a -> a
+
+instance Unsyntax Producer where
+  unsyntax (Pstx p) = p
+  unsyntax p        = p
+
+instance Unsyntax Consumer where
+  unsyntax (Cstx c) = c
+  unsyntax c        = c
+
+instance Unsyntax Statement where
+  unsyntax (Spair p c)        = Spair (unsyntax p) (unsyntax c)
+  unsyntax (Sop f p1 p2 c)    = Sop f (unsyntax p1) (unsyntax p2) (unsyntax c)
+  unsyntax (Sifz p s1 s2)     = Sifz (unsyntax p) (unsyntax s1) (unsyntax s2)
+  unsyntax (Scall name ps cs) = Scall name (map unsyntax ps) (map unsyntax cs)
 
 -- | producer values
 valueP :: Producer -> Bool
@@ -248,7 +252,7 @@ instance Focusing Producer where
     case nvps of
       []         -> Pcon name (map focusing vps) (map focusing cs)
       nvp : nvps -> Pmu \a -> Spair (focusing nvp) (Cmu \x -> Spair (Pcon name (vps ++ Pstx x : nvps) cs) (Cstx a))
-  focusing (Pstx p) = Pstx p -- do not touch what's inside Pstx
+  focusing (Pstx p) = Pstx p
 
 instance Focusing Consumer where
   focusing c@(Cvar _)        = c
@@ -262,7 +266,7 @@ instance Focusing Consumer where
       nvp : nvps -> Cmu \y -> Spair (focusing nvp)
                                 (Cmu \x -> Spair (Pstx y)
                                 (Cdes name (vps ++ Pstx x : nvps) cs))
-  focusing (Cstx c) = Cstx c -- do not touch what's inside Cstx
+  focusing (Cstx c) = Cstx c
 
 instance Focusing Statement where
   focusing (Spair p c) = Spair (focusing p) (focusing c)
