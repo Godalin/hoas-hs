@@ -286,8 +286,8 @@ instance Focusing Consumer where
 instance Focusing Statement where
   focusing (Spair p c) = Spair (focusing p) (focusing c)
   focusing (Sop f p1 p2 c)
-    | not (valueP p1) = Spair p1 (Cmu \x -> focusing (Sop f (Pstx x) p2 c))
-    | not (valueP p2) = Spair p2 (Cmu \x -> focusing (Sop f p1 (Pstx x) c))
+    | not (valueP p1) = Spair (focusing p1) (Cmu \x -> focusing (Sop f (Pstx x) p2 c))
+    | not (valueP p2) = Spair (focusing p2) (Cmu \x -> focusing (Sop f p1 (Pstx x) c))
     | otherwise = Sop f (focusing p1) (focusing p2) (focusing c)
   focusing (Sifz p s1 s2)
     | not (valueP p) = Spair (focusing p) (Cmu \x -> Sifz (Pstx x) s1 s2)
