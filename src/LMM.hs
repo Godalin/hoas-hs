@@ -11,7 +11,9 @@ module LMM where
 
 import           Control.Monad
 import           Control.Monad.Except
-import           Data.List
+import           Prettyprinter
+import           Prettyprinter.Render.String
+import           Prettyprinter.Render.Terminal
 import           Text.Printf
 
 -- |
@@ -83,55 +85,64 @@ define name np nc f = (name, Definition np nc f)
 -- | programs
 type Program = [(Name, Definition)]
 
-prettyP :: Int -> Producer -> String
-prettyP d (Pmu f) = printf "μ(%s).%s" (prettyC d (Cvar d)) (prettyS (d + 1) (f (Cvar d)))
-prettyP _ (Pnum n) = printf "[%d]" n
-prettyP d (Pcon name ps ns) = printf "𝕂{%s:%s;%s}" name (prettyPs d ps) (prettyCs d ns)
+prettyP :: Int -> Producer -> Doc AnsiStyle
+prettyP d (Pmu f) = green "μ(" <> prettyC d (Cvar d) <> green ")." <> prettyS (d + 1) (f (Cvar d))
+prettyP _ (Pnum n) = intStyle $ "[" <> pretty n <> "]" where
+  intStyle = annotate (color Magenta)
+prettyP d (Pcon name ps ns) = "𝕂{" <> pretty name <> ":" <> prettyPs d ps <> ";" <> prettyCs d ns <> "}"
 prettyP d (Pcocase defs) =
-  printf "cocase{%s}" (intercalate "|" $ map (\(name, f) -> name ++ prettyDef d f) defs)
-prettyP _ (Pvar n) = printf "x%d" n
-prettyP d (Pstx p) = printf "PVAR{%s}" $ prettyP d p
+  "cocase{" <> hsep (punctuate "|" $ map (\(name, f) -> pretty name <> prettyDef d f) defs) <> "}"
+prettyP _ (Pvar n) = "x" <> pretty n
+prettyP d (Pstx p) = "PVAR{" <> prettyP d p <> "}"
 
-prettyPs :: Int -> [Producer] -> String
-prettyPs d = intercalate "," . map (prettyP d)
+prettyPs :: Int -> [Producer] -> Doc AnsiStyle
+prettyPs d = hsep . punctuate "," . map (prettyP d)
 
-prettyC :: Int -> Consumer -> String
-prettyC d (Cmu f) = printf "̃μ(%s).%s" (prettyP d (Pvar d)) (prettyS (d + 1) (f (Pvar d)))
-prettyC _ Cstar = "⋆"
-prettyC d (Cdes name ps ns) = printf "𝔻{%s:%s;%s}" name (prettyPs d ps) (prettyCs d ns)
+prettyC :: Int -> Consumer -> Doc AnsiStyle
+prettyC d (Cmu f) = green "~μ(" <> prettyP d (Pvar d) <> green ")." <> prettyS (d + 1) (f (Pvar d))
+prettyC _ Cstar = cyan "⋆"
+prettyC d (Cdes name ps ns) = "𝔻{" <> pretty name <> ":" <> prettyPs d ps <> ";" <> prettyCs d ns <> "}"
 prettyC d (Ccase defs) =
-  printf "case{%s}" (intercalate "|" $ map (\(name, f) -> name ++ prettyDef d f) defs)
-prettyC _ (Cvar n) = printf "α%d" n
-prettyC d (Cstx c) = printf "CVAR{%s}" $ prettyC d c
+  "case{" <> hsep (punctuate "|" (map (\(name, f) -> pretty name <> prettyDef d f) defs)) <> "}"
+prettyC _ (Cvar n) = "α" <> pretty n
+prettyC d (Cstx c) = "CVAR{" <> prettyC d c <> "}"
 
-prettyCs :: Int -> [Consumer] -> String
-prettyCs d = intercalate "," . map (prettyC d)
+prettyCs :: Int -> [Consumer] -> Doc AnsiStyle
+prettyCs d = hsep . punctuate "," . map (prettyC d)
 
-prettyDef :: Int -> Definition -> String
+prettyDef :: Int -> Definition -> Doc AnsiStyle
 prettyDef d (Definition np nc f) =
-  printf "[%s;%s].%s" (prettyPs d vps) (prettyCs d vns) (prettyS (d + np + nc) (f vps vns))
+  prettyPs d vps <> ";" <> prettyCs d vns <> "." <> prettyS (d + np + nc) (f vps vns)
     where
       vps = map Pvar [d .. d + np - 1]
       vns = map Cvar [d + np .. d + np + nc - 1]
 
-prettyS :: Int -> Statement -> String
-prettyS d (Spair p c) = printf "⟨%s|%s⟩" (prettyP d p) (prettyC d c)
+prettyS :: Int -> Statement -> Doc AnsiStyle
+prettyS d (Spair p c) = red "⟨" <> prettyP d p <> red "|" <> ul (prettyC d c) <> red "⟩"
 prettyS d (Sop op p1 p2 c) = case op 1 1 of
-  2 -> printf "op+(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
-  0 -> printf "op-(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
-  1 -> printf "op*(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
-  _ -> printf "op?(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
-prettyS d (Sifz p s1 s2) = printf "ifz(%s;%s,%s)" (prettyP d p) (prettyS (d + 1) s1) (prettyS (d + 1) s2)
-prettyS d (Scall name ps cs) = printf "CALL(%s:%s;%s)" name (prettyPs d ps) (prettyCs d cs)
+  2 -> yellow "op+(" <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> prettyC d c <> yellow ")"
+  0 -> yellow "op-(" <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> prettyC d c <> yellow ")"
+  1 -> "op*(" <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> prettyC d c <> ")"
+  _ -> "op?(" <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> prettyC d c <> ")"
+prettyS d (Sifz p s1 s2) =
+  "ifz(" <> prettyP d p <> ";" <> prettyS (d + 1) s1 <> "," <> prettyS (d + 1) s2 <> ")"
+prettyS d (Scall name ps cs) =
+  "CALL(" <> pretty name <> prettyPs d ps <> ";" <> prettyCs d cs <> ")"
+
+green = annotate (color Green)
+cyan = annotate (color Cyan <> bold)
+yellow = annotate (color Yellow)
+red = annotate (color Red)
+ul = annotate underlined
 
 instance Show Producer where
-  show = prettyP 0
+  show = renderString . layoutPretty defaultLayoutOptions . unAnnotate . prettyP 0
 
 instance Show Consumer where
-  show = prettyC 0
+  show = renderString . layoutPretty defaultLayoutOptions . unAnnotate . prettyC 0
 
 instance Show Statement where
-  show = prettyS 0
+  show = renderString . layoutPretty defaultLayoutOptions . unAnnotate . prettyS 0
 
 
 
@@ -224,7 +235,7 @@ reduceIterList s = do
   let ss = runExcept (reduceIter s)
   case ss of
     Left err         -> putStrLn $ "Error: " ++ err
-    Right statements -> mapM_ (putStrLn . ("--> " ++) . show) statements
+    Right statements -> mapM_ (putDoc . (\d -> "--> " <> d <> line) . prettyS 0) statements
 
 -- | reduce a statement interactively, waiting for user input after each reduction
 reduceIterInteractive :: Statement -> IO ()
