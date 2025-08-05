@@ -118,21 +118,25 @@ prettyDef d (Definition np nc f) =
       vns = map Cvar [d + np .. d + np + nc - 1]
 
 prettyS :: Int -> Statement -> Doc AnsiStyle
-prettyS d (Spair p c) = red "⟨" <> prettyP d p <> red "|" <> ul (prettyC d c) <> red "⟩"
-prettyS d (Sop op p1 p2 c) = case op 1 1 of
-  2 -> yellow "op+(" <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> prettyC d c <> yellow ")"
-  0 -> yellow "op-(" <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> prettyC d c <> yellow ")"
-  1 -> "op*(" <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> prettyC d c <> ")"
-  _ -> "op?(" <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> prettyC d c <> ")"
+prettyS d (Spair p c) = red "⟨" <> prettyP d p <> red "|" <> ul (prettyC d c) <> red "⟩" where
+  red = annotate (color Red)
+  red' = annotate (bgColorDull Red)
+prettyS d (Sop op p1 p2 c) =
+  let
+    hd = case op 1 1 of
+      2 -> "op+("
+      0 -> "op-("
+      1 -> "op*("
+      _ -> "op?("
+  in yellow hd <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> ul (prettyC d c) <> yellow ")"
 prettyS d (Sifz p s1 s2) =
-  "ifz(" <> prettyP d p <> ";" <> prettyS (d + 1) s1 <> "," <> prettyS (d + 1) s2 <> ")"
+  "ifz(" <> prettyP d p <> ";" <> ul (prettyS (d + 1) s1) <> "," <> ul (prettyS (d + 1) s2) <> ")"
 prettyS d (Scall name ps cs) =
   "CALL(" <> pretty name <> prettyPs d ps <> ";" <> prettyCs d cs <> ")"
 
 green = annotate (color Green)
 cyan = annotate (color Cyan <> bold)
 yellow = annotate (color Yellow)
-red = annotate (color Red)
 ul = annotate underlined
 
 instance Show Producer where
