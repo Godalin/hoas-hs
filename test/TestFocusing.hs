@@ -17,16 +17,16 @@ import           LMM
 makeFocusedVersions :: String -> Fun -> (Fun, Fun, Fun)
 makeFocusedVersions _name original =
   ( original
-  , focusing True original   -- protected
-  , focusing False original  -- unprotected
+  , unsyntax $ focusing True original -- protected
+  , focusing False original           -- unprotected
   )
 
 -- Create focused versions of a Statement by applying focusing to the whole expression
 makeFocusedStatements :: String -> Fun -> (Statement, Statement, Statement)
 makeFocusedStatements _name expr =
-  ( stop expr                          -- original
-  , stop $ focusing True expr          -- protected
-  , stop $ focusing False expr         -- unprotected
+  ( stop expr                            -- original
+  , stop $ unsyntax $ focusing True expr -- protected
+  , stop $ focusing False expr           -- unprotected
   )
 
 -- Display comparison between protected and unprotected focusing

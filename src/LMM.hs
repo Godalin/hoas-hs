@@ -5,6 +5,7 @@
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
+{-# LANGUAGE ViewPatterns         #-}
 
 module LMM where
 
@@ -84,6 +85,8 @@ define name np nc f = (name, Definition np nc f)
 -- | programs
 type Program = [(Name, Definition)]
 
+showVAR = True
+
 prettyP :: Int -> Producer -> Doc AnsiStyle
 prettyP d (Pmu f) = green "μ(" <> prettyC d (Cvar d) <> green ")." <> prettyS (d + 1) (f (Cvar d))
 prettyP _ (Pnum n) = intStyle $ pretty n where
@@ -92,8 +95,7 @@ prettyP d (Pcon name ps ns) = "𝕂{" <> pretty name <> ":" <> prettyPs d ps <> 
 prettyP d (Pcocase defs) =
   "cocase{" <> hcat (punctuate "|" $ map (\(name, f) -> pretty name <> ":" <> prettyDef d f) defs) <> "}"
 prettyP _ (Pvar n) = "x" <> pretty n
--- prettyP d (Pstx p) = "PVAR{" <> prettyP d p <> "}"
-prettyP d (Pstx p) = prettyP d p
+prettyP d (Pstx p) = if showVAR then "PVAR{" <> prettyP d p <> "}" else prettyP d p
 
 prettyPs :: Int -> [Producer] -> Doc AnsiStyle
 prettyPs d = hcat . punctuate "," . map (prettyP d)
@@ -105,8 +107,7 @@ prettyC d (Cdes name ps ns) = "𝔻{" <> pretty name <> ":" <> prettyPs d ps <> 
 prettyC d (Ccase defs) =
   "case{" <> hcat (punctuate "|" (map (\(name, f) -> pretty name <> ":" <> prettyDef d f) defs)) <> "}"
 prettyC _ (Cvar n) = "α" <> pretty n
--- prettyC d (Cstx c) = "CVAR{" <> prettyC d c <> "}"
-prettyC d (Cstx c) = prettyC d c
+prettyC d (Cstx c) = if showVAR then "CVAR{" <> prettyC d c <> "}" else prettyC d c
 
 prettyCs :: Int -> [Consumer] -> Doc AnsiStyle
 prettyCs d = hcat . punctuate "," . map (prettyC d)
@@ -157,12 +158,12 @@ instance Show Statement where
 -- | reduce a statement
 reduceStatement :: Program -> Statement -> Except String Statement
 reduceStatement _ (Sop op (Pnum n1) (Pnum n2) c) = return (Spair (Pnum (op n1 n2)) c)
-reduceStatement _ (Sop {}) = throwError "Cannot reduce statement with non-numeric producers"
+reduceStatement _ (Sop {}) = throwError "op: Cannot reduce statement with non-numeric producers"
 reduceStatement _ (Sifz (Pnum 0) s1 _) = return s1
 reduceStatement _ (Sifz (Pnum _) _ s2) = return s2
-reduceStatement _ (Sifz {}) = throwError "Cannot reduce statement with non-numeric producer in ifz"
-reduceStatement _ (Spair (Pmu f) c) = return (f c)
-reduceStatement _ (Spair pv@(Pnum _) (Cmu f)) = return (f pv)
+reduceStatement _ (Sifz {}) = throwError "ifz: Cannot reduce statement with non-numeric producer in ifz"
+reduceStatement _ (Spair (Pmu f) pc@(valueN -> True)) = return (f pc) -- * reduce first
+reduceStatement _ (Spair pv@(valueP -> True) (Cmu f)) = return (f pv)
 reduceStatement _ (Spair (Pcon name ps cs) (Ccase defs)) = do
   if all valueP ps && all valueN cs then do
     def <- withError (printf "Data: In %s " name ++) (reduceName name defs)
@@ -196,12 +197,21 @@ class Unsyntax a where
   unsyntax :: a -> a
 
 instance Unsyntax Producer where
-  unsyntax (Pstx p) = p
-  unsyntax p        = p
+  unsyntax (Pstx p)          = p
+  unsyntax (Pmu bind)        = Pmu \a -> unsyntax (bind a)
+  unsyntax (Pcon name ps cs) = Pcon name (fmap unsyntax ps) (fmap unsyntax cs)
+  unsyntax (Pcocase binds)   = Pcocase $ fmap (fmap unsyntax) binds
+  unsyntax p                 = p
 
 instance Unsyntax Consumer where
-  unsyntax (Cstx c) = c
-  unsyntax c        = c
+  unsyntax (Cstx c)          = c
+  unsyntax (Cmu bind)        = Cmu \x -> unsyntax (bind x)
+  unsyntax (Cdes name ps cs) = Cdes name (fmap unsyntax ps) (fmap unsyntax cs)
+  unsyntax (Ccase binds)     = Ccase $ fmap (fmap unsyntax) binds
+  unsyntax c                 = c
+
+instance Unsyntax Definition where
+  unsyntax (Definition np nc bind) = Definition np nc \ps ns -> unsyntax $ bind ps ns
 
 instance Unsyntax Statement where
   unsyntax (Spair p c)        = Spair (unsyntax p) (unsyntax c)
@@ -270,7 +280,7 @@ class Focusing a where
 instance Focusing Producer where
   focusing _ p@(Pvar _)        = p
   focusing _ p@(Pnum _)        = p
-  focusing _ p@(Pcocase _)     = p
+  focusing b (Pcocase binds)   = Pcocase (map (fmap (focusing b)) binds)
   focusing b (Pmu bind)        = Pmu \a -> focusing b (bind (syntax b a))
   focusing b (Pcon name ps cs) =
     let (vps, nvps) = span valueP ps in
@@ -281,8 +291,8 @@ instance Focusing Producer where
 
 instance Focusing Consumer where
   focusing _ c@(Cvar _)        = c
-  focusing _ c@(Ccase _)       = c
   focusing _ Cstar             = Cstar
+  focusing b (Ccase binds)     = Ccase (map (fmap (focusing b)) binds)
   focusing b (Cmu bind)        = Cmu \x -> focusing b (bind (syntax b x))
   focusing b (Cdes name ps cs) =
     let (vps, nvps) = span valueP ps in
@@ -305,6 +315,10 @@ instance Focusing Statement where
     case nvps of
       []         -> Scall name (map (focusing b) vps) (map (focusing b) cs)
       nvp : nvps -> Spair nvp (Cmu \x -> Scall name (vps ++ syntax b x : nvps) cs)
+
+instance Focusing Definition where
+  focusing b (Definition np nc bind) = Definition np nc $
+    \ps cs -> focusing b (bind (fmap (syntax b) ps) (fmap (syntax b) cs))
 
 
 
