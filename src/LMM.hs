@@ -90,7 +90,7 @@ prettyP _ (Pnum n) = intStyle $ pretty n where
   intStyle = annotate (color Magenta)
 prettyP d (Pcon name ps ns) = "𝕂{" <> pretty name <> ":" <> prettyPs d ps <> ";" <> prettyCs d ns <> "}"
 prettyP d (Pcocase defs) =
-  "cocase{" <> hsep (punctuate "|" $ map (\(name, f) -> pretty name <> prettyDef d f) defs) <> "}"
+  "cocase{" <> hcat (punctuate "|" $ map (\(name, f) -> pretty name <> ":" <> prettyDef d f) defs) <> "}"
 prettyP _ (Pvar n) = "x" <> pretty n
 prettyP d (Pstx p) = "PVAR{" <> prettyP d p <> "}"
 
@@ -102,7 +102,7 @@ prettyC d (Cmu f) = green "~μ(" <> prettyP d (Pvar d) <> green ")." <> prettyS 
 prettyC _ Cstar = cyan "⋆"
 prettyC d (Cdes name ps ns) = "𝔻{" <> pretty name <> ":" <> prettyPs d ps <> ";" <> prettyCs d ns <> "}"
 prettyC d (Ccase defs) =
-  "case{" <> hsep (punctuate "|" (map (\(name, f) -> pretty name <> prettyDef d f) defs)) <> "}"
+  "case{" <> hcat (punctuate "|" (map (\(name, f) -> pretty name <> ":" <> prettyDef d f) defs)) <> "}"
 prettyC _ (Cvar n) = "α" <> pretty n
 prettyC d (Cstx c) = "CVAR{" <> prettyC d c <> "}"
 
