@@ -92,7 +92,8 @@ prettyP d (Pcon name ps ns) = "𝕂{" <> pretty name <> ":" <> prettyPs d ps <> 
 prettyP d (Pcocase defs) =
   "cocase{" <> hcat (punctuate "|" $ map (\(name, f) -> pretty name <> ":" <> prettyDef d f) defs) <> "}"
 prettyP _ (Pvar n) = "x" <> pretty n
-prettyP d (Pstx p) = "PVAR{" <> prettyP d p <> "}"
+-- prettyP d (Pstx p) = "PVAR{" <> prettyP d p <> "}"
+prettyP d (Pstx p) = prettyP d p
 
 prettyPs :: Int -> [Producer] -> Doc AnsiStyle
 prettyPs d = hcat . punctuate "," . map (prettyP d)
@@ -104,7 +105,8 @@ prettyC d (Cdes name ps ns) = "𝔻{" <> pretty name <> ":" <> prettyPs d ps <> 
 prettyC d (Ccase defs) =
   "case{" <> hcat (punctuate "|" (map (\(name, f) -> pretty name <> ":" <> prettyDef d f) defs)) <> "}"
 prettyC _ (Cvar n) = "α" <> pretty n
-prettyC d (Cstx c) = "CVAR{" <> prettyC d c <> "}"
+-- prettyC d (Cstx c) = "CVAR{" <> prettyC d c <> "}"
+prettyC d (Cstx c) = prettyC d c
 
 prettyCs :: Int -> [Consumer] -> Doc AnsiStyle
 prettyCs d = hcat . punctuate "," . map (prettyC d)
