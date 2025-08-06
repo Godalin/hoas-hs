@@ -11,10 +11,8 @@ main = do
   putStrLn "  - Unprotected focusing (False): Direct variable passing without protection"
   putStrLn ""
 
-  -- Key test: Compare reduction behavior differences
-  putStrLn "Key Test: Comparing Reduction Behavior Differences"
-  putStrLn "=================================================="
-  runAllReductionTests
+  -- Run all tests (both syntax comparison and reduction tests)
+  runAllTests
 
   putStrLn ""
   putStrLn "The differences clearly show how Pstx/Cstx protection affects"
