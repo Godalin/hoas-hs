@@ -10,6 +10,15 @@ cabal build
 cabal repl
 ```
 
+For Nix users, this project provides a [`shell.nix`](/shell.nix) file that prepares you with a development environment
+with `ghc`, `cabal`, and `hls`. It should be out of the box. To start with `nix`, just run
+
+```sh
+nix-shell
+```
+
+and the enter the cabal repl.
+
 
 
 ## Untyped $\lambda$ Calculus
