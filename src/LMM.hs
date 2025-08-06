@@ -96,7 +96,7 @@ prettyP _ (Pvar n) = "x" <> pretty n
 prettyP d (Pstx p) = "PVAR{" <> prettyP d p <> "}"
 
 prettyPs :: Int -> [Producer] -> Doc AnsiStyle
-prettyPs d = hsep . punctuate "," . map (prettyP d)
+prettyPs d = hcat . punctuate "," . map (prettyP d)
 
 prettyC :: Int -> Consumer -> Doc AnsiStyle
 prettyC d (Cmu f) = green "~μ(" <> prettyP d (Pvar d) <> green ")." <> prettyS (d + 1) (f (Pvar d))
@@ -108,7 +108,7 @@ prettyC _ (Cvar n) = "α" <> pretty n
 prettyC d (Cstx c) = "CVAR{" <> prettyC d c <> "}"
 
 prettyCs :: Int -> [Consumer] -> Doc AnsiStyle
-prettyCs d = hsep . punctuate "," . map (prettyC d)
+prettyCs d = hcat . punctuate "," . map (prettyC d)
 
 prettyDef :: Int -> Definition -> Doc AnsiStyle
 prettyDef d (Definition np nc f) =
