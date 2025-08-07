@@ -126,13 +126,13 @@ prettyS d (Spair p c) = red "⟨" <> prettyP d p <> red "|" <> ul (prettyC d c) 
 prettyS d (Sop op p1 p2 c) =
   let
     hd = case op 1 1 of
-      2 -> "op+("
-      0 -> "op-("
-      1 -> "op*("
-      _ -> "op?("
+      2 -> "+("
+      0 -> "-("
+      1 -> "*("
+      _ -> "?("
   in yellow hd <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> ul (prettyC d c) <> yellow ")"
 prettyS d (Sifz p s1 s2) =
-  "ifz(" <> prettyP d p <> ";" <> ul (prettyS (d + 1) s1) <> "," <> ul (prettyS (d + 1) s2) <> ")"
+  yellow "ifz(" <> prettyP d p <> ";" <> ul (prettyS (d + 1) s1) <> "," <> ul (prettyS (d + 1) s2) <> yellow ")"
 prettyS d (Scall name ps cs) =
   "CALL(" <> pretty name <> ":" <> prettyPs d ps <> ";" <> prettyCs d cs <> ")"
 
@@ -248,23 +248,23 @@ valueN (Cstx _ )  = True
 -- valueN _          = False
 
 -- | reduce a statement iteratively until no more reductions are possible
-reduceIter :: Statement -> Except String [Statement]
-reduceIter s = (s :) <$> go s
+reduceIter :: Program -> Statement -> Except String [Statement]
+reduceIter prog s = (s :) <$> go s
   where
-    go s = (reduceStatement defined s >>= (\s' -> (s' :) <$> go s')) `catchError` const (return [])
+    go s = (reduceStatement prog s >>= (\s' -> (s' :) <$> go s')) `catchError` const (return [])
 
 -- | reduce a statement and print the list
-reduceIterList :: Statement -> IO ()
-reduceIterList s = do
-  let ss = runExcept (reduceIter s)
+reduceIterList :: Program -> Statement -> IO ()
+reduceIterList prog s = do
+  let ss = runExcept (reduceIter prog s)
   case ss of
     Left err         -> putStrLn $ "Error: " ++ err
     Right statements -> mapM_ (putDoc . (\d -> "--> " <> d <> line) . prettyS 0) statements
 
 -- | reduce a statement interactively, waiting for user input after each reduction
-reduceIterInteractive :: Statement -> IO ()
-reduceIterInteractive s = do
-  let ss = runExcept (reduceIter s)
+reduceIterInteractive :: Program -> Statement -> IO ()
+reduceIterInteractive prog s = do
+  let ss = runExcept (reduceIter prog s)
   case ss of
     Left err         -> putStrLn $ "Error: " ++ err
     Right statements -> mapM_ ((putStrLn . ("--> " ++) . show) >=> const (void getLine)) statements
@@ -349,7 +349,8 @@ fcall :: Name -> [Producer] -> [Consumer] -> Fun
 fcall name ps cs = Pmu (\a -> Scall name ps (cs ++ [a]))
 
 fdef :: Name -> FDef -> (Name, Definition)
-fdef name (FDef np nc def) = (name, Definition np (nc + 1) \ps csa -> Spair (def ps (init csa)) (last csa))
+fdef name (FDef np nc def) = (name, Definition np (nc + 1)
+  \ps csa -> unsyntax $ focusing True $ Spair (def ps (init csa)) (last csa))
 
 fdef' :: Name -> Int -> Int -> ([Producer] -> [Consumer] -> Producer) -> (Name, Definition)
 fdef' name np nc def = fdef name (FDef np nc def)
@@ -415,12 +416,12 @@ instance Num Fun where
 -- *** Reduce `Fun`
 
 -- | auto reduce
-reduceFunList :: Producer -> IO ()
-reduceFunList = reduceIterList . stop
+reduceFunList :: Program -> Producer -> IO ()
+reduceFunList prog = reduceIterList prog . stop
 
 -- | interactive reduce
-reduceFunInteractive :: Producer -> IO ()
-reduceFunInteractive = reduceIterInteractive . stop
+reduceFunInteractive :: Program -> Producer -> IO ()
+reduceFunInteractive prog = reduceIterInteractive prog . stop
 
 -- |
 -- *** `Fun` Examples

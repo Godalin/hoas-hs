@@ -42,7 +42,7 @@ executable hoas-hs
 test-suite hoas-hs-test
     import:           warnings
     default-language: Haskell2010
-    other-modules:    TestFocusing, ShowDifference, ComprehensiveFunTest
+    other-modules:    ComprehensiveFunTest
     -- other-extensions:
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
