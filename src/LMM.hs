@@ -2,10 +2,12 @@
 {-# LANGUAGE BlockArguments       #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ViewPatterns         #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
-{-# LANGUAGE ViewPatterns         #-}
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# OPTIONS_GHC -Wno-unused-local-binds #-}
 
 module LMM where
 
