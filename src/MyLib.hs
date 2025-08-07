@@ -1,4 +1,6 @@
-module MyLib (someFunc) where
+module MyLib (lmmExample) where
 
-someFunc :: IO ()
-someFunc = putStrLn "someFunc"
+import           LMM
+
+lmmExample :: IO ()
+lmmExample = reduceFunList defined (fcall "akm" [2, 2] [])
