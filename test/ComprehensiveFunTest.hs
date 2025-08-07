@@ -73,6 +73,18 @@ funTestProgram =
           (fcall "akm" [m - 1, fcall "akm" [m, n - 1] []] [])
       )
 
+    -- Multiplication functions with early exit comparison
+  , fdef' "mult" 1 0 \[l] [] -> flab (\alpha -> fcall "mult'" [l] [alpha])
+  , fdef' "mult'" 1 1 \[l] [alpha] -> fcase l
+      [ ("Nil", FBind 0 \[] -> 1)
+      , ("Cons", FBind 2 \[x, xs] ->
+            fifz x (fgoto 0 alpha) (x * fcall "mult'" [xs] [alpha]))
+      ]
+  , fdef' "mult_no_exit" 1 0 \[l] [] -> fcase l
+      [ ("Nil", FBind 0 \[] -> 1)
+      , ("Cons", FBind 2 \[x, xs] -> x * fcall "mult_no_exit" [xs] [])
+      ]
+
     -- List operations
   , fdef' "head" 1 0 \[xs] [] -> fcase xs
       [ ("Nil", FBind 0 \[] -> 0)
@@ -364,6 +376,23 @@ runFunLanguageTests = do
     (fcase (fcon "Just" [fcon "Pair" [1, 2]])
            [("Nothing", FBind 0 \[] -> 0),
             ("Just", FBind 1 \[p] -> fcall "fst" [p] [])])
+
+  -- Multiplication functions with early exit comparison
+  -- Test 34: Multiplication with early exit (contains zero)
+  runFunReductionTest "F34" "Multiplication with early exit: mult([1,2,0,3,4])"
+    (fcall "mult" [fcon "Cons" [1, fcon "Cons" [2, fcon "Cons" [0, fcon "Cons" [3, fcon "Cons" [4, fcon "Nil" []]]]]]] [])
+
+  -- Test 35: Multiplication with early exit (no zero)
+  runFunReductionTest "F35" "Multiplication with early exit: mult([1,2,3,4])"
+    (fcall "mult" [fcon "Cons" [1, fcon "Cons" [2, fcon "Cons" [3, fcon "Cons" [4, fcon "Nil" []]]]]] [])
+
+  -- Test 36: Multiplication without early exit (contains zero)
+  runFunReductionTest "F36" "Multiplication without early exit: mult_no_exit([1,2,0,3,4])"
+    (fcall "mult_no_exit" [fcon "Cons" [1, fcon "Cons" [2, fcon "Cons" [0, fcon "Cons" [3, fcon "Cons" [4, fcon "Nil" []]]]]]] [])
+
+  -- Test 37: Multiplication without early exit (no zero)
+  runFunReductionTest "F37" "Multiplication without early exit: mult_no_exit([1,2,3,4])"
+    (fcall "mult_no_exit" [fcon "Cons" [1, fcon "Cons" [2, fcon "Cons" [3, fcon "Cons" [4, fcon "Nil" []]]]]] [])
 
 -- |
 -- *** Main Test Interface

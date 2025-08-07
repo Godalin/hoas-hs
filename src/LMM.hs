@@ -481,6 +481,16 @@ defined =
           (fcall "akm" [m - 1, 1] [])
           (fcall "akm" [m - 1, fcall "akm" [m, n - 1] []] [])
       )
+  , fdef' "mult" 1 0 \[l] [] -> flab (\alpha -> fcall "mult'" [l] [alpha])
+  , fdef' "mult'" 1 1 \[l] [alpha] -> fcase l
+      [ ("Nil", FBind 0 \[] -> 1)
+      , ("Cons", FBind 2 \[x, xs] ->
+            fifz x (fgoto 0 alpha) (x * fcall "mult'" [xs] [alpha]))
+      ]
+  , fdef' "mult_no_exit" 1 0 \[l] [] -> fcase l
+      [ ("Nil", FBind 0 \[] -> 1)
+      , ("Cons", FBind 2 \[x, xs] -> x * fcall "mult_no_exit" [xs] [])
+      ]
   ]
 
 
