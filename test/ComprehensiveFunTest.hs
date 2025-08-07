@@ -2,11 +2,7 @@
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module ComprehensiveFunTest (
-  runCoreLanguageTests,
-  runFunLanguageTests,
-  runAllLanguageTests
-) where
+module ComprehensiveFunTest where
 
 import           Control.Monad
 import           LMM
@@ -61,6 +57,21 @@ funTestProgram =
   , fdef' "double" 1 0 \[x] [] -> x * 2
   , fdef' "square" 1 0 \[x] [] -> x * x
   , fdef' "add" 2 0 \[x, y] [] -> x + y
+
+    -- Advanced arithmetic functions
+  , fdef' "fct" 1 0 \[n] [] -> fifz n 1 (n * fcall "fct" [n - 1] [])
+  , fdef' "fib" 1 0 \[n] [] ->
+      fifz n 1 (
+        fifz (n - 1) 1 (
+          fcall "fib" [n - 1] [] + fcall "fib" [n - 2] []
+        )
+      )
+  , fdef' "akm" 2 0 \[m, n] [] ->
+      fifz m (n + 1) (
+        fifz n
+          (fcall "akm" [m - 1, 1] [])
+          (fcall "akm" [m - 1, fcall "akm" [m, n - 1] []] [])
+      )
 
     -- List operations
   , fdef' "head" 1 0 \[xs] [] -> fcase xs
@@ -227,116 +238,129 @@ runFunLanguageTests = do
   runFunReductionTest "F5" "Function call: inc(7)"
     (fcall "inc" [7] [])
 
+  -- Advanced arithmetic tests
+  -- Test 6: Factorial in Fun
+  runFunReductionTest "F6" "Factorial: fct(5)"
+    (fcall "fct" [5] [])
+
+  -- Test 7: Fibonacci in Fun
+  runFunReductionTest "F7" "Fibonacci: fib(6)"
+    (fcall "fib" [6] [])
+
+  -- Test 8: Ackermann function
+  runFunReductionTest "F8" "Ackermann: akm(2, 3)"
+    (fcall "akm" [2, 3] [])
+
   -- Data construction and case matching
-  -- Test 6: Data construction
-  runFunReductionTest "F6" "Data construction: Just(42)"
+  -- Test 9: Data construction
+  runFunReductionTest "F9" "Data construction: Just(42)"
     (fcon "Just" [42])
 
-  -- Test 7: Case matching - Just
-  runFunReductionTest "F7" "Case matching Just: case Just(5) of Nothing -> 0 | Just(x) -> x + 10"
+  -- Test 10: Case matching - Just
+  runFunReductionTest "F10" "Case matching Just: case Just(5) of Nothing -> 0 | Just(x) -> x + 10"
     (fcase (fcon "Just" [5])
            [("Nothing", FBind 0 \[] -> 0),
             ("Just", FBind 1 \[x] -> x + 10)])
 
-  -- Test 8: Case matching - Nothing
-  runFunReductionTest "F8" "Case matching Nothing: case Nothing of Nothing -> 42 | Just(x) -> x"
+  -- Test 11: Case matching - Nothing
+  runFunReductionTest "F11" "Case matching Nothing: case Nothing of Nothing -> 42 | Just(x) -> x"
     (fcase (fcon "Nothing" [])
            [("Nothing", FBind 0 \[] -> 42),
             ("Just", FBind 1 \[x] -> x)])
 
   -- List operations
-  -- Test 9: List construction
-  runFunReductionTest "F9" "List construction: Cons(1, Cons(2, Nil))"
+  -- Test 12: List construction
+  runFunReductionTest "F12" "List construction: Cons(1, Cons(2, Nil))"
     (fcon "Cons" [1, fcon "Cons" [2, fcon "Nil" []]])
 
-  -- Test 10: List head
-  runFunReductionTest "F10" "List head: head(Cons(42, Nil))"
+  -- Test 13: List head
+  runFunReductionTest "F13" "List head: head(Cons(42, Nil))"
     (fcall "head" [fcon "Cons" [42, fcon "Nil" []]] [])
 
-  -- Test 11: List tail
-  runFunReductionTest "F11" "List tail: tail(Cons(1, Cons(2, Nil)))"
+  -- Test 14: List tail
+  runFunReductionTest "F14" "List tail: tail(Cons(1, Cons(2, Nil)))"
     (fcall "tail" [fcon "Cons" [1, fcon "Cons" [2, fcon "Nil" []]]] [])
 
-  -- Test 12: List length
-  runFunReductionTest "F12" "List length: length(Cons(1, Cons(2, Cons(3, Nil))))"
+  -- Test 15: List length
+  runFunReductionTest "F15" "List length: length(Cons(1, Cons(2, Cons(3, Nil))))"
     (fcall "length" [fcon "Cons" [1, fcon "Cons" [2, fcon "Cons" [3, fcon "Nil" []]]]] [])
 
-  -- Test 13: List sum
-  runFunReductionTest "F13" "List sum: sum(Cons(10, Cons(20, Cons(30, Nil))))"
+  -- Test 16: List sum
+  runFunReductionTest "F16" "List sum: sum(Cons(10, Cons(20, Cons(30, Nil))))"
     (fcall "sum" [fcon "Cons" [10, fcon "Cons" [20, fcon "Cons" [30, fcon "Nil" []]]]] [])
 
   -- Pair/Tuple operations
-  -- Test 14: Pair construction and fst
-  runFunReductionTest "F14" "Pair fst: fst(Pair(10, 20))"
+  -- Test 17: Pair construction and fst
+  runFunReductionTest "F17" "Pair fst: fst(Pair(10, 20))"
     (fcall "fst" [fcon "Pair" [10, 20]] [])
 
-  -- Test 15: Pair snd
-  runFunReductionTest "F15" "Pair snd: snd(Pair(10, 20))"
+  -- Test 18: Pair snd
+  runFunReductionTest "F18" "Pair snd: snd(Pair(10, 20))"
     (fcall "snd" [fcon "Pair" [10, 20]] [])
 
-  -- Test 16: Pair swap
-  runFunReductionTest "F16" "Pair swap: swap(Pair(10, 20))"
+  -- Test 19: Pair swap
+  runFunReductionTest "F19" "Pair swap: swap(Pair(10, 20))"
     (fcall "swap" [fcon "Pair" [10, 20]] [])
 
   -- Codata/Lazy operations
-  -- Test 17: Lazy pair construction and destructuring
-  runFunReductionTest "F17" "Lazy pair fst: fst of lazy_pair(100, 200)"
+  -- Test 20: Lazy pair construction and destructuring
+  runFunReductionTest "F20" "Lazy pair fst: fst of lazy_pair(100, 200)"
     (fdes (fcall "lazy_pair" [100, 200] []) "fst" [])
 
-  -- Test 18: Lazy pair snd
-  runFunReductionTest "F18" "Lazy pair snd: snd of lazy_pair(100, 200)"
+  -- Test 21: Lazy pair snd
+  runFunReductionTest "F21" "Lazy pair snd: snd of lazy_pair(100, 200)"
     (fdes (fcall "lazy_pair" [100, 200] []) "snd" [])
 
   -- Stream operations
-  -- Test 19: Repeat stream head
-  runFunReductionTest "F19" "Repeat stream head: hd of repeat(42)"
+  -- Test 22: Repeat stream head
+  runFunReductionTest "F22" "Repeat stream head: hd of repeat(42)"
     (fdes (fcall "repeat" [42] []) "hd" [])
 
-  -- Test 20: Repeat stream tail head
-  runFunReductionTest "F20" "Repeat stream tail head: hd of tl of repeat(42)"
+  -- Test 23: Repeat stream tail head
+  runFunReductionTest "F23" "Repeat stream tail head: hd of tl of repeat(42)"
     (fdes (fdes (fcall "repeat" [42] []) "tl" []) "hd" [])
 
-  -- Test 21: Natural numbers stream
-  runFunReductionTest "F21" "Natural numbers: hd of nats_from(5)"
+  -- Test 24: Natural numbers stream
+  runFunReductionTest "F24" "Natural numbers: hd of nats_from(5)"
     (fdes (fcall "nats_from" [5] []) "hd" [])
 
-  -- Test 22: Natural numbers stream tail
-  runFunReductionTest "F22" "Natural numbers tail: hd of tl of nats_from(5)"
+  -- Test 25: Natural numbers stream tail
+  runFunReductionTest "F25" "Natural numbers tail: hd of tl of nats_from(5)"
     (fdes (fdes (fcall "nats_from" [5] []) "tl" []) "hd" [])
 
   -- Mutual recursion
-  -- Test 23: Even number test
-  runFunReductionTest "F23" "Is even: is_even(4)"
+  -- Test 26: Even number test
+  runFunReductionTest "F26" "Is even: is_even(4)"
     (fcall "is_even" [4] [])
 
-  -- Test 24: Odd number test
-  runFunReductionTest "F24" "Is odd: is_odd(5)"
+  -- Test 27: Odd number test
+  runFunReductionTest "F27" "Is odd: is_odd(5)"
     (fcall "is_odd" [5] [])
 
-  -- Test 25: Even number test (odd input)
-  runFunReductionTest "F25" "Is even (odd): is_even(3)"
+  -- Test 28: Even number test (odd input)
+  runFunReductionTest "F28" "Is even (odd): is_even(3)"
     (fcall "is_even" [3] [])
 
   -- Advanced combinations
-  -- Test 26: Nested lambda with let
-  runFunReductionTest "F26" "Nested lambda: let f = (\\x -> \\y -> x + y) in f @ 3 @ 4"
+  -- Test 29: Nested lambda with let
+  runFunReductionTest "F29" "Nested lambda: let f = (\\x -> \\y -> x + y) in f @ 3 @ 4"
     (flet (flam (\x -> flam (\y -> x + y))) (\f -> (f @ 3) @ 4))
 
-  -- Test 27: Complex conditional with functions
-  runFunReductionTest "F27" "Complex conditional: if (square(2) - 3) then inc(10) else double(5)"
+  -- Test 30: Complex conditional with functions
+  runFunReductionTest "F30" "Complex conditional: if (square(2) - 3) then inc(10) else double(5)"
     (fifz (fcall "square" [2] [] - 3) (fcall "inc" [10] []) (fcall "double" [5] []))
 
   -- Control operators
-  -- Test 28: Label and goto
-  runFunReductionTest "F28" "Label escape: label (\\k -> 1 + goto(k, 42))"
+  -- Test 31: Label and goto
+  runFunReductionTest "F31" "Label escape: label (\\k -> 1 + goto(k, 42))"
     (flab (\k -> 1 + fgoto 42 k))
 
-  -- Test 29: Complex control flow
-  runFunReductionTest "F29" "Complex control: label (\\k -> if 0 then goto(k, 100) else 200)"
+  -- Test 32: Complex control flow
+  runFunReductionTest "F32" "Complex control: label (\\k -> if 0 then goto(k, 100) else 200)"
     (flab (\k -> fifz 0 (fgoto 100 k) 200))
 
-  -- Test 30: Nested case with pairs
-  runFunReductionTest "F30" "Nested case: case Just(Pair(1,2)) of Nothing -> 0 | Just(p) -> fst(p)"
+  -- Test 33: Nested case with pairs
+  runFunReductionTest "F33" "Nested case: case Just(Pair(1,2)) of Nothing -> 0 | Just(p) -> fst(p)"
     (fcase (fcon "Just" [fcon "Pair" [1, 2]])
            [("Nothing", FBind 0 \[] -> 0),
             ("Just", FBind 1 \[p] -> fcall "fst" [p] [])])

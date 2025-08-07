@@ -150,7 +150,8 @@ instance Show Consumer where
 instance Show Statement where
   show = renderString . layoutPretty defaultLayoutOptions . unAnnotate . prettyS 0
 
-
+instance Show Definition where
+  show = renderString . layoutPretty defaultLayoutOptions . unAnnotate . prettyDef 0
 
 -- |
 -- ** Reduction of `Core`
@@ -286,7 +287,7 @@ instance Focusing Producer where
     let (vps, nvps) = span valueP ps in
     case nvps of
       []         -> Pcon name (map (focusing b) vps) (map (focusing b) cs)
-      nvp : nvps -> Pmu \a -> Spair (focusing b nvp) (Cmu \x -> Spair (Pcon name (vps ++ syntax b x : nvps) cs) (syntax b a))
+      nvp : nvps -> Pmu \a -> Spair (focusing b nvp) (Cmu \x -> Spair (focusing b $ Pcon name (vps ++ syntax b x : nvps) cs) (syntax b a))
   focusing _ (Pstx p) = Pstx p -- protected
 
 instance Focusing Consumer where
@@ -298,7 +299,7 @@ instance Focusing Consumer where
     let (vps, nvps) = span valueP ps in
     case nvps of
       []         -> Cdes name (map (focusing b) vps) (map (focusing b) cs)
-      nvp : nvps -> Cmu \y -> Spair (focusing b nvp) (Cmu \x -> Spair (syntax b y) (Cdes name (vps ++ syntax b x : nvps) cs))
+      nvp : nvps -> Cmu \y -> Spair (focusing b nvp) (Cmu \x -> Spair (syntax b y) (focusing b $ Cdes name (vps ++ syntax b x : nvps) cs))
   focusing _ (Cstx c) = Cstx c -- protected
 
 instance Focusing Statement where
@@ -308,13 +309,13 @@ instance Focusing Statement where
     | not (valueP p2) = Spair (focusing b p2) (Cmu \x -> focusing b (Sop f p1 (syntax b x) c))
     | otherwise = Sop f (focusing b p1) (focusing b p2) (focusing b c)
   focusing b (Sifz p s1 s2)
-    | not (valueP p) = Spair (focusing b p) (Cmu \x -> Sifz (syntax b x) s1 s2)
+    | not (valueP p) = Spair (focusing b p) (Cmu \x -> focusing b (Sifz (syntax b x) s1 s2))
     | otherwise = Sifz (focusing b p) (focusing b s1) (focusing b s2)
   focusing b (Scall name ps cs) =
     let (vps, nvps) = span valueP ps in
     case nvps of
       []         -> Scall name (map (focusing b) vps) (map (focusing b) cs)
-      nvp : nvps -> Spair nvp (Cmu \x -> Scall name (vps ++ syntax b x : nvps) cs)
+      nvp : nvps -> Spair (focusing b nvp) (Cmu \x -> focusing b (Scall name (vps ++ syntax b x : nvps) cs))
 
 instance Focusing Definition where
   focusing b (Definition np nc bind) = Definition np nc $
@@ -349,8 +350,8 @@ fcall :: Name -> [Producer] -> [Consumer] -> Fun
 fcall name ps cs = Pmu (\a -> Scall name ps (cs ++ [a]))
 
 fdef :: Name -> FDef -> (Name, Definition)
-fdef name (FDef np nc def) = (name, Definition np (nc + 1)
-  \ps csa -> unsyntax $ focusing True $ Spair (def ps (init csa)) (last csa))
+fdef name (FDef np nc def) = (name, unsyntax $ focusing True $ Definition np (nc + 1)
+  \ps csa -> Spair (def ps (init csa)) (last csa))
 
 fdef' :: Name -> Int -> Int -> ([Producer] -> [Consumer] -> Producer) -> (Name, Definition)
 fdef' name np nc def = fdef name (FDef np nc def)
@@ -468,6 +469,18 @@ defined =
       ("hd", FBind 0 \[] -> x),
       ("tl", FBind 0 \[] -> fcall "repeat" [x] [])
     ]
+  , fdef' "fib'" 1 0 \[n] [] ->
+      fifz n 1 (
+        fifz (n - 1) 1 (
+          fcall "fib" [n - 1] [] + fcall "fib" [n - 2] []
+        )
+      )
+  , fdef' "akm" 2 0 \[m, n] [] ->
+      fifz m (n + 1) (
+        fifz n
+          (fcall "akm" [m - 1, 1] [])
+          (fcall "akm" [m - 1, fcall "akm" [m, n - 1] []] [])
+      )
   ]
 
 
