@@ -2,15 +2,20 @@
 {-# LANGUAGE BlockArguments       #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE ViewPatterns         #-}
 {-# OPTIONS_GHC -Wno-name-shadowing #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
+{-# OPTIONS_GHC -Wno-missing-signatures #-}
+{-# OPTIONS_GHC -Wno-unused-local-binds #-}
 
 module LMM where
 
 import           Control.Monad
 import           Control.Monad.Except
-import           Data.List
+import           Prettyprinter
+import           Prettyprinter.Render.String
+import           Prettyprinter.Render.Terminal
 import           Text.Printf
 
 -- |
@@ -34,6 +39,9 @@ data Producer
     Pcocase [(Name, Definition)]
   | -- | <helper> constructor for printing
     Pvar Int
+  | -- | <helper> syntactical variable
+    -- only for syntactical transformations
+    Pstx Producer
 
 -- |
 -- *** Consumers
@@ -48,6 +56,9 @@ data Consumer
     Ccase [(Name, Definition)]
   | -- | <helper> constructor for printing
     Cvar Int
+  | -- | <helper> syntactical variable
+    -- only for syntactical transformations
+    Cstx Consumer
 
 -- |
 -- *** Statements
@@ -76,55 +87,73 @@ define name np nc f = (name, Definition np nc f)
 -- | programs
 type Program = [(Name, Definition)]
 
-prettyP :: Int -> Producer -> String
-prettyP d (Pmu f) = printf "μ(%s).%s" (prettyC d (Cvar d)) (prettyS (d + 1) (f (Cvar d)))
-prettyP _ (Pnum n) = printf "[%d]" n
-prettyP d (Pcon name ps ns) = printf "𝕂{%s:%s;%s}" name (prettyPs d ps) (prettyCs d ns)
+showVAR = True
+
+prettyP :: Int -> Producer -> Doc AnsiStyle
+prettyP d (Pmu f) = green "μ(" <> prettyC d (Cvar d) <> green ")." <> prettyS (d + 1) (f (Cvar d))
+prettyP _ (Pnum n) = intStyle $ pretty n where
+  intStyle = annotate (color Magenta)
+prettyP d (Pcon name ps ns) = "𝕂{" <> pretty name <> ":" <> prettyPs d ps <> ";" <> prettyCs d ns <> "}"
 prettyP d (Pcocase defs) =
-  printf "cocase{%s}" (intercalate "|" $ map (\(name, f) -> name ++ prettyDef d f) defs)
-prettyP _ (Pvar n) = printf "x%d" n
+  "cocase{" <> hcat (punctuate "|" $ map (\(name, f) -> pretty name <> ":" <> prettyDef d f) defs) <> "}"
+prettyP _ (Pvar n) = "x" <> pretty n
+prettyP d (Pstx p) = if showVAR then "PVAR{" <> prettyP d p <> "}" else prettyP d p
 
-prettyPs :: Int -> [Producer] -> String
-prettyPs d = intercalate "," . map (prettyP d)
+prettyPs :: Int -> [Producer] -> Doc AnsiStyle
+prettyPs d = hcat . punctuate "," . map (prettyP d)
 
-prettyC :: Int -> Consumer -> String
-prettyC d (Cmu f) = printf "̃μ(%s).%s" (prettyP d (Pvar d)) (prettyS (d + 1) (f (Pvar d)))
-prettyC _ Cstar = "⋆"
-prettyC d (Cdes name ps ns) = printf "𝔻{%s:%s;%s}" name (prettyPs d ps) (prettyCs d ns)
+prettyC :: Int -> Consumer -> Doc AnsiStyle
+prettyC d (Cmu f) = green "~μ(" <> prettyP d (Pvar d) <> green ")." <> prettyS (d + 1) (f (Pvar d))
+prettyC _ Cstar = cyan "⋆"
+prettyC d (Cdes name ps ns) = "𝔻{" <> pretty name <> ":" <> prettyPs d ps <> ";" <> prettyCs d ns <> "}"
 prettyC d (Ccase defs) =
-  printf "case{%s}" (intercalate "|" $ map (\(name, f) -> name ++ prettyDef d f) defs)
-prettyC _ (Cvar n) = printf "α%d" n
+  "case{" <> hcat (punctuate "|" (map (\(name, f) -> pretty name <> ":" <> prettyDef d f) defs)) <> "}"
+prettyC _ (Cvar n) = "α" <> pretty n
+prettyC d (Cstx c) = if showVAR then "CVAR{" <> prettyC d c <> "}" else prettyC d c
 
-prettyCs :: Int -> [Consumer] -> String
-prettyCs d = intercalate "," . map (prettyC d)
+prettyCs :: Int -> [Consumer] -> Doc AnsiStyle
+prettyCs d = hcat . punctuate "," . map (prettyC d)
 
-prettyDef :: Int -> Definition -> String
+prettyDef :: Int -> Definition -> Doc AnsiStyle
 prettyDef d (Definition np nc f) =
-  printf "[%s;%s].%s" (prettyPs d vps) (prettyCs d vns) (prettyS (d + np + nc) (f vps vns))
+  prettyPs d vps <> ";" <> prettyCs d vns <> "." <> prettyS (d + np + nc) (f vps vns)
     where
       vps = map Pvar [d .. d + np - 1]
       vns = map Cvar [d + np .. d + np + nc - 1]
 
-prettyS :: Int -> Statement -> String
-prettyS d (Spair p c) = printf "⟨%s|%s⟩" (prettyP d p) (prettyC d c)
-prettyS d (Sop op p1 p2 c) = case op 1 1 of
-  2 -> printf "op+(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
-  0 -> printf "op-(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
-  1 -> printf "op*(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
-  _ -> printf "op?(%s,%s;%s)" (prettyP d p1) (prettyP d p2) (prettyC d c)
-prettyS d (Sifz p s1 s2) = printf "ifz(%s;%s,%s)" (prettyP d p) (prettyS (d + 1) s1) (prettyS (d + 1) s2)
-prettyS d (Scall name ps cs) = printf "CALL(%s:%s;%s)" name (prettyPs d ps) (prettyCs d cs)
+prettyS :: Int -> Statement -> Doc AnsiStyle
+prettyS d (Spair p c) = red "⟨" <> prettyP d p <> red "|" <> ul (prettyC d c) <> red "⟩" where
+  red = annotate (color Red)
+  red' = annotate (bgColorDull Red)
+prettyS d (Sop op p1 p2 c) =
+  let
+    hd = case op 1 1 of
+      2 -> "+("
+      0 -> "-("
+      1 -> "*("
+      _ -> "?("
+  in yellow hd <> prettyP d p1 <> "," <> prettyP d p2 <> ";" <> ul (prettyC d c) <> yellow ")"
+prettyS d (Sifz p s1 s2) =
+  yellow "ifz(" <> prettyP d p <> ";" <> ul (prettyS (d + 1) s1) <> "," <> ul (prettyS (d + 1) s2) <> yellow ")"
+prettyS d (Scall name ps cs) =
+  "CALL(" <> pretty name <> ":" <> prettyPs d ps <> ";" <> prettyCs d cs <> ")"
+
+green = annotate (color Green)
+cyan = annotate (color Cyan <> bold)
+yellow = annotate (color Yellow)
+ul = annotate underlined
 
 instance Show Producer where
-  show = prettyP 0
+  show = renderString . layoutPretty defaultLayoutOptions . unAnnotate . prettyP 0
 
 instance Show Consumer where
-  show = prettyC 0
+  show = renderString . layoutPretty defaultLayoutOptions . unAnnotate . prettyC 0
 
 instance Show Statement where
-  show = prettyS 0
+  show = renderString . layoutPretty defaultLayoutOptions . unAnnotate . prettyS 0
 
-
+instance Show Definition where
+  show = renderString . layoutPretty defaultLayoutOptions . unAnnotate . prettyDef 0
 
 -- |
 -- ** Reduction of `Core`
@@ -132,12 +161,12 @@ instance Show Statement where
 -- | reduce a statement
 reduceStatement :: Program -> Statement -> Except String Statement
 reduceStatement _ (Sop op (Pnum n1) (Pnum n2) c) = return (Spair (Pnum (op n1 n2)) c)
-reduceStatement _ (Sop {}) = throwError "Cannot reduce statement with non-numeric producers"
+reduceStatement _ (Sop {}) = throwError "op: Cannot reduce statement with non-numeric producers"
 reduceStatement _ (Sifz (Pnum 0) s1 _) = return s1
 reduceStatement _ (Sifz (Pnum _) _ s2) = return s2
-reduceStatement _ (Sifz {}) = throwError "Cannot reduce statement with non-numeric producer in ifz"
-reduceStatement _ (Spair (Pmu f) c) = return (f c)
-reduceStatement _ (Spair pv@(Pnum _) (Cmu f)) = return (f pv)
+reduceStatement _ (Sifz {}) = throwError "ifz: Cannot reduce statement with non-numeric producer in ifz"
+reduceStatement _ (Spair (Pmu f) pc@(valueN -> True)) = return (f pc) -- * reduce first
+reduceStatement _ (Spair pv@(valueP -> True) (Cmu f)) = return (f pv)
 reduceStatement _ (Spair (Pcon name ps cs) (Ccase defs)) = do
   if all valueP ps && all valueN cs then do
     def <- withError (printf "Data: In %s " name ++) (reduceName name defs)
@@ -166,40 +195,133 @@ reduceDefinition (Definition np nc f) ps cs
   | np == length ps && nc == length cs = return (f ps cs)
   | otherwise = throwError "Binding: Wrong numbers of arguments"
 
+-- | cancel the syntactical variables
+class Unsyntax a where
+  unsyntax :: a -> a
+
+instance Unsyntax Producer where
+  unsyntax (Pstx p)          = p
+  unsyntax (Pmu bind)        = Pmu \a -> unsyntax (bind a)
+  unsyntax (Pcon name ps cs) = Pcon name (fmap unsyntax ps) (fmap unsyntax cs)
+  unsyntax (Pcocase binds)   = Pcocase $ fmap (fmap unsyntax) binds
+  unsyntax p                 = p
+
+instance Unsyntax Consumer where
+  unsyntax (Cstx c)          = c
+  unsyntax (Cmu bind)        = Cmu \x -> unsyntax (bind x)
+  unsyntax (Cdes name ps cs) = Cdes name (fmap unsyntax ps) (fmap unsyntax cs)
+  unsyntax (Ccase binds)     = Ccase $ fmap (fmap unsyntax) binds
+  unsyntax c                 = c
+
+instance Unsyntax Definition where
+  unsyntax (Definition np nc bind) = Definition np nc \ps ns -> unsyntax $ bind ps ns
+
+instance Unsyntax Statement where
+  unsyntax (Spair p c)        = Spair (unsyntax p) (unsyntax c)
+  unsyntax (Sop f p1 p2 c)    = Sop f (unsyntax p1) (unsyntax p2) (unsyntax c)
+  unsyntax (Sifz p s1 s2)     = Sifz (unsyntax p) (unsyntax s1) (unsyntax s2)
+  unsyntax (Scall name ps cs) = Scall name (map unsyntax ps) (map unsyntax cs)
+
+class Syntax a where
+  syntax :: Bool -> a -> a
+
+instance Syntax Producer where
+  syntax b t = if b then Pstx t else t
+
+instance Syntax Consumer where
+  syntax b t = if b then Cstx t else t
+
+-- | producer values
 valueP :: Producer -> Bool
 valueP (Pnum _)      = True
 valueP (Pcon _ ps _) = all valueP ps
 valueP (Pcocase {})  = True
+valueP (Pvar _)      = True
+valueP (Pstx _ )     = True
 valueP _             = False
 
+-- | consumer values (everything)
 valueN :: Consumer -> Bool
 valueN (Cmu _)    = True
 valueN Cstar      = True
 valueN (Cdes {})  = True
 valueN (Ccase {}) = True
-valueN _          = False
+valueN (Cvar _)   = True
+valueN (Cstx _ )  = True
+-- valueN _          = False
 
 -- | reduce a statement iteratively until no more reductions are possible
-reduceIter :: Statement -> Except String [Statement]
-reduceIter s = (s :) <$> go s
+reduceIter :: Program -> Statement -> Except String [Statement]
+reduceIter prog s = (s :) <$> go s
   where
-    go s = (reduceStatement defined s >>= (\s' -> (s' :) <$> go s')) `catchError` const (return [])
+    go s = (reduceStatement prog s >>= (\s' -> (s' :) <$> go s')) `catchError` const (return [])
 
 -- | reduce a statement and print the list
-reduceIterList :: Statement -> IO ()
-reduceIterList s = do
-  let ss = runExcept (reduceIter s)
+reduceIterList :: Program -> Statement -> IO ()
+reduceIterList prog s = do
+  let ss = runExcept (reduceIter prog s)
   case ss of
     Left err         -> putStrLn $ "Error: " ++ err
-    Right statements -> mapM_ (putStrLn . ("--> " ++) . show) statements
+    Right statements -> mapM_ (putDoc . (\d -> "--> " <> d <> line) . prettyS 0) statements
 
 -- | reduce a statement interactively, waiting for user input after each reduction
-reduceIterInteractive :: Statement -> IO ()
-reduceIterInteractive s = do
-  let ss = runExcept (reduceIter s)
+reduceIterInteractive :: Program -> Statement -> IO ()
+reduceIterInteractive prog s = do
+  let ss = runExcept (reduceIter prog s)
   case ss of
     Left err         -> putStrLn $ "Error: " ++ err
     Right statements -> mapM_ ((putStrLn . ("--> " ++) . show) >=> const (void getLine)) statements
+
+
+
+-- |
+-- *** Focusing
+
+class Focusing a where
+  focusing :: Bool -> a -> a
+
+instance Focusing Producer where
+  focusing _ p@(Pvar _)        = p
+  focusing _ p@(Pnum _)        = p
+  focusing b (Pcocase binds)   = Pcocase (map (fmap (focusing b)) binds)
+  focusing b (Pmu bind)        = Pmu \a -> focusing b (bind (syntax b a))
+  focusing b (Pcon name ps cs) =
+    let (vps, nvps) = span valueP ps in
+    case nvps of
+      []         -> Pcon name (map (focusing b) vps) (map (focusing b) cs)
+      nvp : nvps -> Pmu \a -> Spair (focusing b nvp) (Cmu \x -> Spair (focusing b $ Pcon name (vps ++ syntax b x : nvps) cs) (syntax b a))
+  focusing _ (Pstx p) = Pstx p -- protected
+
+instance Focusing Consumer where
+  focusing _ c@(Cvar _)        = c
+  focusing _ Cstar             = Cstar
+  focusing b (Ccase binds)     = Ccase (map (fmap (focusing b)) binds)
+  focusing b (Cmu bind)        = Cmu \x -> focusing b (bind (syntax b x))
+  focusing b (Cdes name ps cs) =
+    let (vps, nvps) = span valueP ps in
+    case nvps of
+      []         -> Cdes name (map (focusing b) vps) (map (focusing b) cs)
+      nvp : nvps -> Cmu \y -> Spair (focusing b nvp) (Cmu \x -> Spair (syntax b y) (focusing b $ Cdes name (vps ++ syntax b x : nvps) cs))
+  focusing _ (Cstx c) = Cstx c -- protected
+
+instance Focusing Statement where
+  focusing b (Spair p c) = Spair (focusing b p) (focusing b c)
+  focusing b (Sop f p1 p2 c)
+    | not (valueP p1) = Spair (focusing b p1) (Cmu \x -> focusing b (Sop f (syntax b x) p2 c))
+    | not (valueP p2) = Spair (focusing b p2) (Cmu \x -> focusing b (Sop f p1 (syntax b x) c))
+    | otherwise = Sop f (focusing b p1) (focusing b p2) (focusing b c)
+  focusing b (Sifz p s1 s2)
+    | not (valueP p) = Spair (focusing b p) (Cmu \x -> focusing b (Sifz (syntax b x) s1 s2))
+    | otherwise = Sifz (focusing b p) (focusing b s1) (focusing b s2)
+  focusing b (Scall name ps cs) =
+    let (vps, nvps) = span valueP ps in
+    case nvps of
+      []         -> Scall name (map (focusing b) vps) (map (focusing b) cs)
+      nvp : nvps -> Spair (focusing b nvp) (Cmu \x -> focusing b (Scall name (vps ++ syntax b x : nvps) cs))
+
+instance Focusing Definition where
+  focusing b (Definition np nc bind) = Definition np nc $
+    \ps cs -> focusing b (bind (fmap (syntax b) ps) (fmap (syntax b) cs))
 
 
 
@@ -230,7 +352,8 @@ fcall :: Name -> [Producer] -> [Consumer] -> Fun
 fcall name ps cs = Pmu (\a -> Scall name ps (cs ++ [a]))
 
 fdef :: Name -> FDef -> (Name, Definition)
-fdef name (FDef np nc def) = (name, Definition np (nc + 1) \ps csa -> Spair (def ps (init csa)) (last csa))
+fdef name (FDef np nc def) = (name, unsyntax $ focusing True $ Definition np (nc + 1)
+  \ps csa -> Spair (def ps (init csa)) (last csa))
 
 fdef' :: Name -> Int -> Int -> ([Producer] -> [Consumer] -> Producer) -> (Name, Definition)
 fdef' name np nc def = fdef name (FDef np nc def)
@@ -296,12 +419,12 @@ instance Num Fun where
 -- *** Reduce `Fun`
 
 -- | auto reduce
-reduceFunList :: Producer -> IO ()
-reduceFunList = reduceIterList . stop
+reduceFunList :: Program -> Producer -> IO ()
+reduceFunList prog = reduceIterList prog . stop
 
 -- | interactive reduce
-reduceFunInteractive :: Producer -> IO ()
-reduceFunInteractive = reduceIterInteractive . stop
+reduceFunInteractive :: Program -> Producer -> IO ()
+reduceFunInteractive prog = reduceIterInteractive prog . stop
 
 -- |
 -- *** `Fun` Examples
@@ -326,6 +449,7 @@ defined =
             splus w w1 a])]))))
 
     -- definitions in `Fun`
+  , fdef' "main" 0 0 \[] [] -> 1 + (1 - 1)
   , fdef' "m2" 1 0 \[x] [] -> x * 2
   , fdef' "a2" 1 0 \[x] [] -> x + 2
   , fdef' "swap" 1 0 \[x] [] -> fcase x
@@ -347,6 +471,28 @@ defined =
       ("hd", FBind 0 \[] -> x),
       ("tl", FBind 0 \[] -> fcall "repeat" [x] [])
     ]
+  , fdef' "fib'" 1 0 \[n] [] ->
+      fifz n 1 (
+        fifz (n - 1) 1 (
+          fcall "fib" [n - 1] [] + fcall "fib" [n - 2] []
+        )
+      )
+  , fdef' "akm" 2 0 \[m, n] [] ->
+      fifz m (n + 1) (
+        fifz n
+          (fcall "akm" [m - 1, 1] [])
+          (fcall "akm" [m - 1, fcall "akm" [m, n - 1] []] [])
+      )
+  , fdef' "mult" 1 0 \[l] [] -> flab (\alpha -> fcall "mult'" [l] [alpha])
+  , fdef' "mult'" 1 1 \[l] [alpha] -> fcase l
+      [ ("Nil", FBind 0 \[] -> 1)
+      , ("Cons", FBind 2 \[x, xs] ->
+            fifz x (fgoto 0 alpha) (x * fcall "mult'" [xs] [alpha]))
+      ]
+  , fdef' "mult_no_exit" 1 0 \[l] [] -> fcase l
+      [ ("Nil", FBind 0 \[] -> 1)
+      , ("Cons", FBind 2 \[x, xs] -> x * fcall "mult_no_exit" [xs] [])
+      ]
   ]
 
 
