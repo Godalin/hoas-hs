@@ -1,35 +1,66 @@
-{-# LANGUAGE BlockArguments #-}
-{-# LANGUAGE TypeOperators  #-}
+{-# LANGUAGE BlockArguments        #-}
+{-# LANGUAGE TypeOperators         #-}
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 {-# OPTIONS_GHC -Wno-unused-matches #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 module HOAS.Core where
 
+import           Control.Monad
+import           Control.Monad.Except
+import           Data.List
 import           Text.Printf
 
 data Binder a b = Bind Int ([Var a] -> b)
 
 data Var a = Var a | Idx Int
+  deriving Show
 
 data Bind t = A t | B (Var t)
 
 type (|-) = Binder
 infixr |-
 
-subst :: (a |- b) -> [a] -> Maybe b
-subst (Bind nb f) xs = if nb == length xs then return (f $ map Var xs) else Nothing
+instance Show b => Show (Binder a b) where
+  show (Bind nb f) = printf "%s |- %s" vars (show $ f (map Idx ids)) where
+    ids = [0 .. nb-1]
+    vars = intercalate "," $ map (("x" ++) . show) ids
+
+
+-- | substitution of bound variables
+subst :: (a |- b) -> [a] -> Except String b
+subst (Bind nb f) xs = do
+  guard (nb == length xs)
+  return (f $ map Var xs)
+
+-- | a language of type b should embed a variable in to it
+class Variable a b where
+  unvar :: Var a -> b
 
 
 
 -- |
--- Example
+-- examples
 
-data Term = Abs (Term |- Term) | App Term Term
+data Term
+  = VarT (Var Term)
+  | AbsT (Term |- Term)
+  | AppT Term Term
+  deriving (Show)
 
-pretty :: Int -> Term -> String
-pretty d (Abs (Bind _ f)) = printf "(%s)"
-pretty d (App t1 t2)      = printf "(%s ∙ %s)" (pretty d t1) (pretty d t2)
+instance Variable Term Term where
+  unvar (Var t) = t
+  unvar (Idx i) = VarT (Idx i)
 
+eg1 :: Term
+eg1 = AbsT (Bind 2 \[x, y] -> unvar x)
 
-eg1 :: Int |- Int |- Int
-eg1 = Bind 2 \[Var x, Var y] -> Bind 1 \[Var z] -> z
+eg2 :: Term
+eg2 = AbsT (Bind 2 \[x, y] -> unvar x) @ AbsT (Bind 1 \[x] -> unvar x)
+
+lam f = AbsT (Bind 1 \[x] -> f x)
+
+(@) = AppT
+
+eg3 :: Term
+eg3 = lam \x -> lam \y -> unvar x @ unvar y
