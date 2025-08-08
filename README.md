@@ -59,14 +59,6 @@ will give a reduction list to `(s (s (s (s (s (s z))))))` in 1621 steps.
 
 
 
-## Parametric HOAS
-
-Simple implementation and experiments of PHOAS:
-
-[Parametric higher-order abstract syntax for mechanized semantics](https://dl.acm.org/doi/10.1145/1411204.1411226)
-
-
-
 ## $\lambda \mu \tilde{\mu}$ Calculus
 
 From this paper:
@@ -91,6 +83,12 @@ will give a reduction list to `⟨[720]|⋆⟩`, representing that the calculati
 
 
 
+## (Maybe) Algebraic Effects and Handlers (AE&T)
+
+From this introduction paper: [An Introduction to Algebraic Effects and Handlers. Invited tutorial paper](https://www.sciencedirect.com/science/article/pii/S1571066115000705)
+
+
+
 ## (TODO) $\pi$ Calculus
 
 ... Concurrency programs.
@@ -98,8 +96,13 @@ will give a reduction list to `⟨[720]|⋆⟩`, representing that the calculati
 ## (TODO) Call by Push Value (CBPV)
 ...
 
-## (Maybe) Algebraic Effects and Handlers (AE&T)
-...
-
 ## More Calculi to Come
 ...
+
+
+
+## Parametric HOAS
+
+Simple implementation and experiments of PHOAS:
+
+[Parametric higher-order abstract syntax for mechanized semantics](https://dl.acm.org/doi/10.1145/1411204.1411226)

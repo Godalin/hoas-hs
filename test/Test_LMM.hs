@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wno-incomplete-uni-patterns #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
-module ComprehensiveFunTest where
+module Test_LMM where
 
 import           Control.Monad
 import           LMM

@@ -12,6 +12,10 @@ v   x . x (. x . x)
     +---------------- new major feature, e.g., library/calculus
 ```
 
+## v5.0
+
+* Algebraic Effects & Handlers
+
 ## v4.0
 
 * Lambda Mu Mu~ Calculus

@@ -1,6 +1,6 @@
 module Main (main) where
 
-import           ComprehensiveFunTest
+import           Test_LMM
 
 main :: IO ()
 main = do
